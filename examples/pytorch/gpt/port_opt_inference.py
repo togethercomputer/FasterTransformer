@@ -1,18 +1,3 @@
-# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
-# Copyright (c) 2021, NAVER Corp.  Authored by CLOVA.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from __future__ import print_function
 
 from torch.nn.utils.rnn import pad_sequence
@@ -75,7 +60,7 @@ def main():
                         help='repetition penalty')
     parser.add_argument('--max_seq_len', type=int, default=1024,
                         help='max sequence length for position embedding table.')
-    parser.add_argument('--data_type', type=str, choices=['fp32', 'fp16', 'bf16'], default='fp32')
+    parser.add_argument('--data_type', type=str, choices=['fp32', 'fp16', 'bf16'], default='fp16')
     parser.add_argument('--time', action='store_true',
                         help='whether or not to measure time elapsed.')
     parser.add_argument('--sample_input_file', type=str, default=None,
@@ -86,13 +71,8 @@ def main():
                         help='is enable the random seed.')
     parser.add_argument('--sparse', action='store_true', dest='sparse',
                         help='Enable sparse matrix multiplication. (Need SM 8.0 or 8.6 and SPARSITY_SUPPORT=ON)')
-    parser.add_argument(
-        '--weights_data_type',
-        type=str,
-        default="fp32",
-        choices=["fp32", "fp16"],
-        help='Data type of FT checkpoint weights',
-    )
+    parser.add_argument('--weights_data_type', type=str, default="fp16", choices=["fp32", "fp16"],
+                        help='Data type of FT checkpoint weights')
     parser.add_argument('--return_cum_log_probs', type=int, default=0, choices=[0, 1, 2],
                         help='Whether to compute the cumulative log probsbility of sentences.'
                              ' 0: do not return the cumulative log probs '
@@ -156,7 +136,6 @@ def main():
         random_seed_tensor = torch.zeros([max_batch_size], dtype=torch.int64)
 
     # Prepare model.
-    print("<gpt_example:main> Get started to load model")
     gpt = GPT(head_num, size_per_head, vocab_size, start_id, end_id, layer_num,
               max_seq_len, tensor_para_size, pipeline_para_size, lib_path=args.lib_path,
               weights_data_type=args.weights_data_type)

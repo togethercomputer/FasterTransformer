@@ -241,6 +241,7 @@ class GPTWeights(object):
         try:
             for i in range(len(w)):
                 if w[i].nelement() > 0:
+                    print(f"Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
                     self.w[i] = w[i].reshape(self.w[i].shape)
                 else:
                     self.w[i] = w[i]
@@ -311,9 +312,12 @@ class GPT(nn.Module):
         assert layer_num % pipeline_para_size == 0, "layer_num must be a multiple of pipeline_para_size."
 
         # Load the C++ model into Pytorch model.
+        print(f"<GPT>:__init__: load lib starts.")
         torch.classes.load_library(os.path.abspath(lib_path))
+        print(f"<GPT>:__init__: load lib ends.")
 
         # Prepare weights
+        print(f"<GPT>:__init__: load weight starts.")
         self.weights = GPTWeights(head_num, size_per_head, layer_num, vocab_size,
                                   max_seq_len, tensor_para_size, pipeline_para_size,
                                   has_post_decoder_layernorm = has_post_decoder_layernorm,
@@ -321,6 +325,7 @@ class GPT(nn.Module):
                                   adapter_inter_size = adapter_inter_size,
                                   weights_data_type=weights_data_type,
                                   int8_mode=int8_mode)
+        print(f"<GPT>:__init__: load weight ends.")
 
         # Prepare for tensor/pipeline parallel
         try:
@@ -333,7 +338,7 @@ class GPT(nn.Module):
         torch.cuda.set_device(self.device)
 
         world_size = dist.get_world_size()
-        assert world_size == tensor_para_size * pipeline_para_size, "tensor_para_size * pipeline_para_size must be equal to world_size."
+        assert world_size == tensor_para_size * pipeline_para_size, f"tensor_para_size({tensor_para_size}) * pipeline_para_size({pipeline_para_size}) must be equal to world_size({world_size})."
 
         self.tensor_para_rank = self.rank % self.tensor_para_size
         self.pipeline_para_rank = self.rank // self.tensor_para_size
