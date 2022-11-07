@@ -22,10 +22,25 @@ import sys
 import argparse
 import timeit
 import torch
+import gc
+import torch.distributed as dist
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../..")
 from examples.pytorch.gpt.utils.parallel_gpt import ParallelGPT
 import examples.pytorch.gpt.utils.gpt_token_encoder as encoder
+
+
+def profiling_torch_tensor_memory():
+    total_size = 0
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if obj.is_cuda:
+                    print(type(obj), obj.size(), obj.element_size())
+                    total_size += obj.nelement() * obj.element_size()
+        except: 
+            pass
+    print(f"<profiling_torch_tensor_memory>: total HBM of torch tensors: {total_size}.")
 
 
 def main():
@@ -163,17 +178,30 @@ def main():
     else:
         random_seed_tensor = torch.zeros([max_batch_size], dtype=torch.int64)
 
-    # Prepare model.
-    gpt = ParallelGPT(head_num, size_per_head, vocab_size, start_id, end_id,
-                      layer_num, max_seq_len, tensor_para_size, pipeline_para_size,
-                      lib_path=args.lib_path, int8_mode=args.int8_mode, weights_data_type=weights_data_type,
-                      shared_contexts_ratio=shared_contexts_ratio)
-    if not gpt.load(ckpt_path=args.ckpt_path):
-        print("[WARNING] Checkpoint file not found. Model loading is skipped.")
-    if args.data_type == 'fp16':
-        gpt.half()
-    elif args.data_type == 'bf16':
-        gpt.bfloat16()
+    with torch.no_grad():
+        # Prepare model.
+        gpt = ParallelGPT(head_num, size_per_head, vocab_size, start_id, end_id,
+                            layer_num, max_seq_len, tensor_para_size, pipeline_para_size,
+                            lib_path=args.lib_path, int8_mode=args.int8_mode, weights_data_type=weights_data_type,
+                            shared_contexts_ratio=shared_contexts_ratio)
+        
+        if dist.get_rank() == 0:
+            print("=========Profiling before gpt.load=========")
+            profiling_torch_tensor_memory()
+        
+        torch.cuda.empty_cache()
+        
+        if not gpt.load(ckpt_path=args.ckpt_path):
+            print("[WARNING] Checkpoint file not found. Model loading is skipped.")
+        
+        if dist.get_rank() == 0:
+            print("=========Profiling after gpt.load=========")
+            profiling_torch_tensor_memory()
+        
+        if args.data_type == 'fp16':
+            gpt.half()
+        elif args.data_type == 'bf16':
+            gpt.bfloat16()
 
     with torch.no_grad():
         # Generate tokens.
