@@ -47,7 +47,7 @@ See common requirements such as in [gptj_guide.md](gptj_guide.md#requirements).
 First download a pytorch checkpoint, as provided by [EleutherAI](https://github.com/EleutherAI/gpt-neox#download-links):
 
 ```bash
-wget --cut-dirs=5 -nH -r --no-parent --reject "index.html*" https://mystic.the-eye.eu/public/AI/models/GPT-NeoX-20B/slim_weights/ -P 20B_checkpoints
+wget --cut-dirs=5 -nH -r --no-parent --reject "index.html*" https://the-eye.eu/public/AI/models/GPT-NeoX-20B/slim_weights/ -P 20B_checkpoints
 ```
 
 Then use the script provided by FasterTransformer to convert the checkpoint to raw weights, understood by FT.

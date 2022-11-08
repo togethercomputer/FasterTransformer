@@ -285,7 +285,7 @@ void gptj_example(const INIReader reader)
         prompt_learning_type,
         prefix_prompt_table_pair);  // optional if you don't need prefix prompts
 
-    model_dir = model_dir + "/" + std::to_string(tensor_para.world_size_) + "-gpu/";
+    model_dir = model_dir + "/" + std::to_string(tensor_para.world_size_) + "-gpu";
     gpt_weights.loadModel(model_dir);
     unsigned long long random_seed;
     if (rank == 0) {
