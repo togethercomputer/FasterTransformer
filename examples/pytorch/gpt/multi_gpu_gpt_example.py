@@ -36,18 +36,18 @@ def profiling_torch_tensor_memory():
         try:
             if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
                 if obj.is_cuda:
-                    print(type(obj), obj.size(), obj.element_size())
+                    # print(type(obj), obj.size(), obj.element_size())
                     total_size += obj.nelement() * obj.element_size()
         except: 
             pass
-    print(f"<profiling_torch_tensor_memory>: total HBM of torch tensors: {total_size}.")
+    print(f"<profiling_torch_tensor_memory>: total HBM of torch tensors: {total_size/1073741824} GB.")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--layer_num', type=int, default=24,
                         help='number of layers')
-    parser.add_argument('--input_len', type=int, default=1,
+    parser.add_argument('--input_len', type=int, default=128,
                         help='input sequence length to generate.')
     parser.add_argument('--output_len', type=int, default=32,
                         help='output sequence length to generate.')
@@ -55,15 +55,15 @@ def main():
                         help='head number')
     parser.add_argument('--size_per_head', type=int, default=64,
                         help='size per head')
-    parser.add_argument('--vocab_size', type=int, default=50304,
+    parser.add_argument('--vocab_size', type=int, default=50272,
                         help='vocab size')
     parser.add_argument('--beam_width', type=int, default=1,
                         help='beam width for beam search. Using sampling when beam width is 1.')
-    parser.add_argument('--top_k', type=int, default=1,
+    parser.add_argument('--top_k', type=int, default=50,
                         help='top k candidate num')
     parser.add_argument('--top_p', type=float, default=0.,
                         help='top p probability threshold')
-    parser.add_argument('--temperature', type=float, default=1.,
+    parser.add_argument('--temperature', type=float, default=0.1,
                         help='temperature')
     parser.add_argument('--len_penalty', type=float, default=0.,
                         help='len_penalty')
@@ -81,15 +81,15 @@ def main():
                         help='vocabulary file.')
     parser.add_argument('--merges_file', type=str, default="../models/gpt2-merges.txt",
                         help='merges file.')
-    parser.add_argument('--start_id', type=int, default=50256,
-                        help='start token id.')
-    parser.add_argument('--end_id', type=int, default=50256,
-                        help='end token id.')
-    parser.add_argument('--max_batch_size', type=int, default=8,
+    parser.add_argument('--start_id', type=int, default=2,
+                        help='start token id. (default 2 for opt-models)')
+    parser.add_argument('--end_id', type=int, default=2,
+                        help='end token id. (default 2 for opt-models)')
+    parser.add_argument('--max_batch_size', type=int, default=1,
                         help='max batch size.')
     parser.add_argument('--repetition_penalty', type=float, default=1.,
                         help='repetition penalty')
-    parser.add_argument('--max_seq_len', type=int, default=1024,
+    parser.add_argument('--max_seq_len', type=int, default=2048,
                         help='max sequence length for position embedding table.')
     parser.add_argument('--data_type', type=str, choices=['fp32', 'fp16', 'bf16'], default='fp32')
     parser.add_argument('--time', action='store_true',
@@ -183,6 +183,7 @@ def main():
         gpt = ParallelGPT(head_num, size_per_head, vocab_size, start_id, end_id,
                             layer_num, max_seq_len, tensor_para_size, pipeline_para_size,
                             lib_path=args.lib_path, int8_mode=args.int8_mode, weights_data_type=weights_data_type,
+                            layernorm_type = "pre_layernorm", has_post_decoder_layernorm = True,  activation_type = 'Relu', 
                             shared_contexts_ratio=shared_contexts_ratio)
         
         if dist.get_rank() == 0:

@@ -243,12 +243,12 @@ class GPTWeights(object):
             total_size = 0
             for i in range(len(w)):
                 if w[i].nelement() > 0:
-                    print(f"Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
+                    # print(f"Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
                     self.w[i] = w[i].reshape(self.w[i].shape)
                     total_size += (w[i].nelement() * w[i].element_size())
                 else:
                     self.w[i] = w[i]
-            print(f"Weight type: {self.weights_data_type}, Total_para_size: {total_size/1024/1024/1024} GB.")
+            # print(f"Weight type: {self.weights_data_type}, Total_para_size: {total_size/1024/1024/1024} GB.")
 
         except RuntimeError:
             raise RuntimeError(
