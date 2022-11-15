@@ -47,6 +47,9 @@ class FastInferenceInterface:
         future = asyncio.Future()
         asyncio.ensure_future(self._run_together_server())
         loop.run_forever()
+    
+    def worker(self):
+        pass
 
     async def _run_together_server(self) -> None:
         # only rank 0
@@ -61,6 +64,9 @@ class FastInferenceInterface:
             except Exception as e:
                 logger.exception(f'_run_together_server failed: {e}')
             self._shutdown()
+        else:
+            self.worker()
+        
 
     async def _join_local_coordinator(self):
         try:
@@ -126,6 +132,7 @@ class FastInferenceInterface:
     def _shutdown(self) -> None:
         logger.info("Shutting down")
 
-if __name__ == "__main__":
-    fip = FastInferenceInterface(model_name="opt66b")
-    fip.start()
+
+#if __name__ == "__main__":
+#    fip = FastInferenceInterface(model_name="opt66b")
+#    fip.start()
