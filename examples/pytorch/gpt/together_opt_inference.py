@@ -148,11 +148,9 @@ class FastOPTInference(FastInferenceInterface):
                 tokens_batch, _, cum_log_probs = tokens_batch
                 print('[INFO] Log probs of sentences:', cum_log_probs)
 
-            inferenece_result = {}
+            inferenece_result = []
             tokens_batch = tokens_batch.cpu().numpy()
             
-            result = {}
-            items = []
             for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
                 item = {'choices': [], }
                 for beam_id in range(self.task_info["beam_width"]):
@@ -165,11 +163,11 @@ class FastOPTInference(FastInferenceInterface):
                         "finish_reason": "length"
                     }
                 item['choices'].append(choice)
-                items.append(item)
-            result['inference_result'] = items
+                inferenece_result.append(item)
+            #  So far coordinator does not support batch. 
             return {
                 "result_type": RequestTypeLanguageModelInference,
-                "result": result,
+                "choices": inferenece_result[0]['choices'],
                 "raw_compute_time": time_elapsed
             }
         else:

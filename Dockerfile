@@ -9,6 +9,7 @@ RUN mkdir -p build && \
     cmake -DSM=xx -DCMAKE_BUILD_TYPE=Release -DBUILD_PYT=ON -DBUILD_MULTI_GPU=ON .. &&\
     make && \
     pip install -r ../examples/pytorch/gpt/requirement.txt && \
+    pip install -r ../examples/pytorch/gpt/common/requirement.txt && \
     rm ../examples/pytorch/gpt/*
 
 

@@ -332,7 +332,8 @@ class TogetherWeb3:
     ) -> LanguageModelInferenceResult:
         """Publishes and manages a LanguageModelInferenceRequest and the resulting LanguageModelInferenceResult."""
         result_json = await self.resolve_inference(request, options)
-        return from_dict(data_class=LanguageModelInferenceResult, data=result_json["result"])
+        print(result_json)
+        return from_dict(data_class=LanguageModelInferenceResult, data=result_json["result"]['data'])
 
     async def image_model_inference(
         self,
