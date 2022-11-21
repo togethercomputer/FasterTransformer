@@ -141,5 +141,5 @@ static auto fasterTransformerGptTHS =
                              int64_t,
                              int64_t,
                              int64_t,
-                             std::vector<th::Tensor>())
+                             std::vector<th::Tensor>>())
        .def("forward", &torch_ext::GptjOp::forward);

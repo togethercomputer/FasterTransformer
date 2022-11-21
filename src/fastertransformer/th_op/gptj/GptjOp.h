@@ -78,25 +78,25 @@ public:
        ftNcclInitialize(tensor_para_, pipeline_para_, tensor_para_size, pipeline_para_size);
 
        for (int i=0; i< (int) layer_num_; i++){
-           gptj_weights_.decoder_layer_weights[i]->pre_layernorm_weights.gamma =
+           gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.gamma =
                get_ptr<T>(weights_[i + 0 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->pre_layernorm_weights.beta =
+           gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.beta =
                get_ptr<T>(weights_[i + 1 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.kernel =
+           gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.kernel =
                get_ptr<T>(weights_[i + 2 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->self_attention_weights.query_weight.bias =
+           gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.bias =
                get_ptr<T>(weights_[i + 3 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.kernel =
+           gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.kernel =
                get_ptr<T>(weights_[i + 4 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->self_attention_weights.attention_output_weight.bias =
+           gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.bias =
                get_ptr<T>(weights_[i + 5 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->ffn_weights.intermediate_weight.kernel =
+           gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.kernel =
                get_ptr<T>(weights_[i + 6 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->ffn_weights.intermediate_weight.bias =
+           gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.bias =
                get_ptr<T>(weights_[i + 7 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->ffn_weights.output_weight.kernel =
+           gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.kernel =
                get_ptr<T>(weights_[i + 8 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i]->ffn_weights.output_weight.bias =
+           gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.bias =
                get_ptr<T>(weights_[i + 9 * layer_num_]);
        }
 
@@ -158,7 +158,7 @@ public:
        const size_t max_input_length   = (size_t)input_ids.size(1);
        const int    total_output_len   = (int)(max_input_length + request_output_len);
 
-       GptJ<T> gptj = GptJ<T>(request_batch_size,
+       ft::GptJ<T> gptj = ft::GptJ<T>(request_batch_size,
                               total_output_len,
                               max_input_length,
                               beam_width,
@@ -168,10 +168,10 @@ public:
                               layer_num_,
                               vocab_size_,
                               rotary_embedding_dim_,
-                              start_id,
-                              end_id,
+                              start_id_,
+                              end_id_,
                               0,
-                              PromptLearningType::no_prompt,
+                              ft::PromptLearningType::no_prompt,
                               0.0f,
                               1,
                               0.0f,
@@ -179,13 +179,13 @@ public:
                               1.0f,
                               1.0f,
                               1.0f,
-                              tensor_para,
-                              pipeline_para,
+                              tensor_para_,
+                              pipeline_para_,
                               stream,
                               &cublas_wrapper,
                               &allocator,
                               false,
-                              &prop);
+                              &prop_);
 
        std::vector<uint32_t> output_seq_len(request_batch_size, total_output_len);
 
@@ -244,13 +244,13 @@ public:
                        std::vector<size_t>{request_batch_size, beam_width},
                        get_ptr<int>(sequence_lengths)}},
            {"output_log_probs",
-               Tensor{MEMORY_GPU,
-                      TYPE_FP32,
-                      std::vector<size_t>{(size_t)request_output_len, request_batch_size, beam_width},
-                      get_ptr<float>(cum_log_probs)}}}};
+            ft::Tensor{ft::MEMORY_GPU,
+                       ft::TYPE_FP32,
+                       std::vector<size_t>{(size_t)request_output_len, request_batch_size, beam_width},
+                       get_ptr<float>(cum_log_probs)}}};
 
        try {
-           gpt.forward(&output_tensors, &input_tensors, &gptj_weights_);
+           gptj.forward(&output_tensors, &input_tensors, &gptj_weights_);
        }
        catch (const std::runtime_error& error) {
            FT_LOG_ERROR(error.what());
