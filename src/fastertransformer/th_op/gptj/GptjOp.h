@@ -14,11 +14,13 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
+#define _DEBUG_PRINT_GPTJ
+#include <iostream>
 #include "src/fastertransformer/models/gptj/GptJ.h"
 #include "src/fastertransformer/th_op/th_utils.h"
 #include "src/fastertransformer/utils/cuda_bf16_wrapper.h"
 #include "src/fastertransformer/utils/nccl_utils.h"
+
 
 namespace ft = fastertransformer;
 namespace th = torch;
@@ -77,6 +79,9 @@ public:
 
        ftNcclInitialize(tensor_para_, pipeline_para_, tensor_para_size, pipeline_para_size);
 
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "IFGptj-IFGptj: " << " ftNcclInitialize." << std::endl;
+#endif
        for (int i=0; i< (int) layer_num_; i++){
            gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.gamma =
                get_ptr<T>(weights_[i + 0 * layer_num_]);
@@ -104,6 +109,9 @@ public:
        gptj_weights_.post_decoder_layernorm.beta  = get_ptr<T>(weights_[10 * layer_num_ + 1]);
        gptj_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[10 * layer_num_ + 2]);
        gptj_weights_.post_decoder_embedding.bias = get_ptr<T>(weights_[10 * layer_num_ + 3]);
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "IFGptj-IFGptj: " << " gptj_weights_ loaded" << std::endl;
+#endif
 
        int device_id = 0;
        ft::check_cuda_error(cudaGetDevice(&device_id));

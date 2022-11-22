@@ -54,7 +54,8 @@ def main():
     parser.add_argument('--weights_data_type', type=str, default="fp16", choices=["fp32", "fp16"],
                         help='Data type of FT checkpoint weights')
     args = parser.parse_args()
-     print("\n=============== Arguments ===============")
+    
+    print("\n=============== Arguments ===============")
     for arg in vars(args):
         print("{}: {}".format(arg, getattr(args, arg)))
     print("=========================================\n")
@@ -83,7 +84,7 @@ def main():
     beam_search_diversity_rate = args.beam_search_diversity_rate
     repetition_penalty = args.repetition_penalty
     
-    tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
+    tokenizer = AutoTokenizer.from_pretrained(args.hf_model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
     # Inputs
@@ -96,7 +97,7 @@ def main():
     start_ids = [torch.IntTensor(tokenizer.encode(c)) for c in contexts]
     start_lengths = [len(ids) for ids in start_ids]
             
-    start_ids = pad_sequence(start_ids, batch_first=True, padding_value=self.end_id)
+    start_ids = pad_sequence(start_ids, batch_first=True, padding_value=end_id)
     start_lengths = torch.IntTensor(start_lengths)
     print(f"start_ids: shape ({start_ids.shape}) ids: {start_ids}")
     print("[INFO] batch size: {}".format(batch_size))
