@@ -196,7 +196,6 @@ class GPTJ(nn.Module):
                  end_id,
                  max_seq_len,
                  tensor_para_size, pipeline_para_size,
-
                  lib_path,
                  weights_data_type: np.dtype = np.float16):
         super().__init__()
@@ -269,11 +268,6 @@ class GPTJ(nn.Module):
         self.weights._map(lambda w: w.bfloat16())
         self.cuda()
 
-    def sparse(self):
-        if not self.use_sparse_gemm:
-            self.use_sparse_gemm = True
-            self.cuda()
-
     def cuda(self):
         self.weights._map(lambda w: w.cuda(self.device))
 
@@ -304,9 +298,7 @@ class GPTJ(nn.Module):
                 temperature=None,
                 len_penalty=None,
                 repetition_penalty=None,
-                random_seed=None,
-                return_output_length=False,
-                return_cum_log_probs=0):
+                random_seed=None):
         if not self.build_model:
             self.cuda()
         input_len = start_ids.size(1)
@@ -326,19 +318,10 @@ class GPTJ(nn.Module):
                                      temperature,  # optional, can be None
                                      len_penalty,  # optional, can be None
                                      repetition_penalty,  # optional, can be None
-                                     random_seed,  # optional, can be None
-                                     return_cum_log_probs)  # optional, can be None
-        if return_cum_log_probs == 0:
-            output_ids, output_lengths = outputs
-        else:
-            output_ids, output_lengths, output_cum_log_probs = outputs
-        if return_output_length:
-            if return_cum_log_probs > 0:
-                return output_ids, output_lengths, output_cum_log_probs
-            else:
-                return output_ids, output_lengths
-        else:
-            return output_ids
+                                     random_seed)  # optional, can be None
+        print(f"<GPTJ>:forward: {outputs}")        
+        output_ids, output_lengths, output_cum_log_probs = outputs
+        return output_ids
 
     def set_input_tensor(self, input_tensor):
         """Set input tensor to be used instead of forward()'s input.

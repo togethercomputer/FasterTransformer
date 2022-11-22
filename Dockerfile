@@ -10,6 +10,6 @@ RUN mkdir -p build && \
     make && \
     pip install -r ../examples/pytorch/gpt/requirement.txt && \
     pip install -r ../examples/pytorch/gpt/common/requirement.txt && \
-    rm ../examples/pytorch/gpt/*
+    rm -r ../examples/pytorch/gpt/*
 
 
