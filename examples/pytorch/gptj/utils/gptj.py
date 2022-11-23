@@ -6,12 +6,24 @@ import json
 import os
 import pathlib
 import typing
-
+import gc
 import torch
 import torch.nn as nn
 import numpy as np
 import torch.distributed as dist
 import time
+
+def _profiling_torch_tensor_memory():
+    total_size = 0
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if obj.is_cuda:
+                    # print(type(obj), obj.size(), obj.element_size())
+                    total_size += obj.nelement() * obj.element_size()
+        except: 
+            pass
+    print(f"<profiling_torch_tensor_memory>: total HBM of torch tensors: {total_size/1073741824} GB.")
 
 
 class GPTJWeights(object):
@@ -75,6 +87,7 @@ class GPTJWeights(object):
         self.w.extend([torch.zeros(local_inter_size, global_hidden_units, dtype=torch.float16)] * layer_num)
         # ffn_bias2
         self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(vocab_size, global_hidden_units, dtype=torch.float16)] * layer_num)
         # After Transformer blocks 1 layernorm_gamma
         self.w.append(torch.zeros(global_hidden_units, dtype=torch.float16))
         # After Transformer blocks 1 layernorm_beta
@@ -155,6 +168,8 @@ class GPTJWeights(object):
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
 
+        w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.wte.bin",
+                                              dtype=self.weights_data_type)))
         w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.final_layernorm.weight.bin",
                                               dtype=self.weights_data_type)))
         w.append(torch.from_numpy(np.fromfile(ckpt_path + "/model.final_layernorm.bias.bin",
@@ -225,12 +240,13 @@ class GPTJ(nn.Module):
 
         # Prepare weights
 
-        print(f"<GPTJ>:__init__: load weight starts.")
-        start_load_time = time.time()
+        print(f"<GPTJ>:__init__: init weight starts.")
+        start_time = time.time()
         self.weights = GPTJWeights(head_num, size_per_head, layer_num, vocab_size, max_seq_len, tensor_para_size,
                                    pipeline_para_size, weights_data_type)
-        end_load_time = time.time()
-        print(f"<GPTJ>:__init__: load weight ends. Loading takes {end_load_time - start_load_time} seconds.")
+        end_time = time.time()
+        _profiling_torch_tensor_memory()
+        print(f"<GPTJ>:__init__: init weight ends. init takes {end_time - start_time} seconds.")
 
         # Prepare for tensor/pipeline parallel
         try:
@@ -255,9 +271,14 @@ class GPTJ(nn.Module):
         self.cuda()
 
     def load(self, ckpt_path):
+        print(f"<GPTJ>:__init__: load weight starts.")
+        start_time = time.time()
         is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
                                     pipeline_para_rank=self.pipeline_para_rank)
         self.cuda()
+        end_time = time.time()
+        print(f"<GPTJ>:__init__: load weight ends. Loading takes {end_time - start_time} seconds.")
+        _profiling_torch_tensor_memory()
         return is_load
 
     def half(self):
@@ -269,6 +290,7 @@ class GPTJ(nn.Module):
         self.cuda()
 
     def cuda(self):
+        print(f"<GPTJ>:cuda: starts.")
         self.weights._map(lambda w: w.cuda(self.device))
 
         if self.build_model:
@@ -286,6 +308,7 @@ class GPTJ(nn.Module):
                                                             self.pipeline_para_size,
                                                             self.weights.w)
         self.build_model = True
+        print(f"<GPTJ>:cuda: starts.")
 
     def forward(self,
                 start_ids,

@@ -71,52 +71,100 @@ public:
        end_id_(end_id),
        tensor_para_size_(tensor_para_size),
        pipeline_para_size_(pipeline_para_size),
-       weights_(weights)
+       weights_(weights),
+       gptj_weights_()
    {
        ft::check_cuda_error(cublasLtCreate(&cublasltHandle_));
        cublas_algo_map_      = new ft::cublasAlgoMap("gemm_config.in");
        cublas_wrapper_mutex_ = new std::mutex();
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "++++++++++++++++++++++++++++++++++++++++++++++++++"  << std::endl;    
+        std::cout << "IFGptj-IFGptj: initialized variables: "  << std::endl;
+        std::cout << "head_num_: " << head_num_ << std::endl;
+        std::cout << "size_per_head_: " << size_per_head_ << std::endl;
+        std::cout << "inter_size_: " << inter_size_ << std::endl;
+        std::cout << "layer_num_" << layer_num_ << std::endl;
+        std::cout << "vocab_size_" << vocab_size_ << std::endl;
+        std::cout << "rotary_embedding_dim_" << rotary_embedding_dim_ << std::endl;
+        std::cout << "weights_ lens: " << weights_.size() << std::endl;
+        std::cout << "++++++++++++++++++++++++++++++++++++++++++++++++++"  << std::endl;    
+#endif
 
        ftNcclInitialize(tensor_para_, pipeline_para_, tensor_para_size, pipeline_para_size);
 
-#ifdef _DEBUG_PRINT_GPTJ
-        std::cout << "IFGptj-IFGptj: " << " ftNcclInitialize." << std::endl;
+#ifdef _DEBUG_PRINT_GPTJ 
+        std::cout << "IFGptj-IFGptj: " << " ftNcclInitialize. (done)" << std::endl;
 #endif
-       for (int i=0; i< (int) layer_num_; i++){
-           gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.gamma =
-               get_ptr<T>(weights_[i + 0 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.beta =
-               get_ptr<T>(weights_[i + 1 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.kernel =
-               get_ptr<T>(weights_[i + 2 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.bias =
-               get_ptr<T>(weights_[i + 3 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.kernel =
-               get_ptr<T>(weights_[i + 4 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.bias =
-               get_ptr<T>(weights_[i + 5 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.kernel =
-               get_ptr<T>(weights_[i + 6 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.bias =
-               get_ptr<T>(weights_[i + 7 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.kernel =
-               get_ptr<T>(weights_[i + 8 * layer_num_]);
-           gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.bias =
-               get_ptr<T>(weights_[i + 9 * layer_num_]);
-       }
 
-       gptj_weights_.post_decoder_layernorm.gamma = get_ptr<T>(weights_[10 * layer_num_ + 0]);
-       gptj_weights_.post_decoder_layernorm.beta  = get_ptr<T>(weights_[10 * layer_num_ + 1]);
-       gptj_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[10 * layer_num_ + 2]);
-       gptj_weights_.post_decoder_embedding.bias = get_ptr<T>(weights_[10 * layer_num_ + 3]);
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "++++++++++++++++++++++++++++++++++++++++++++++++++"  << std::endl;   
+        std::cout << "IFGptj-IFGptj: gptj_weights_ variables: "  << std::endl;
+        std::cout << "gptj_weights_.decoder_layer_weights lens: " << gptj_weights_.decoder_layer_weights.size()  << std::endl;
+        std::cout << "gptj_weights_ decoder_layer_weights post_decoder_layernorm: " << gptj_weights_.post_decoder_layernorm.gamma  << std::endl;
+        std::cout << "gptj_weights_ decoder_layer_weights post_decoder_embedding: " << gptj_weights_.post_decoder_embedding.kernel  << std::endl;
+#endif
+
+        gptj_weights_.decoder_layer_weights.reserve(layer_num_);
+        for (int i = 0;  i< (int) layer_num_; i++){
+            if(isValidLayerParallelIndex(i)){
+                gptj_weights_.decoder_layer_weights.push_back(ft::GptJDecoderLayerWeight<T> (
+                    size_per_head_*head_num_, inter_size_, tensor_para_size_, tensor_para_.rank_));       
+            }
+            else{
+                gptj_weights_.decoder_layer_weights.push_back(ft::GptJDecoderLayerWeight<T>(0, 0));
+            }
+        }
+
+        for (int i=0; i< (int) layer_num_; i++){
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "IFGptj-IFGptj: set gptj_weights_ variable: decoder_layer_weights layer <" << i <<">. "   << std::endl;
+#endif
+            gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.gamma =
+               get_ptr<T>(weights_[i + 0 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.beta =
+               get_ptr<T>(weights_[i + 1 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.kernel =
+               get_ptr<T>(weights_[i + 2 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.bias =
+               get_ptr<T>(weights_[i + 3 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.kernel =
+               get_ptr<T>(weights_[i + 4 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.bias =
+               get_ptr<T>(weights_[i + 5 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.kernel =
+               get_ptr<T>(weights_[i + 6 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.bias =
+               get_ptr<T>(weights_[i + 7 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.kernel =
+               get_ptr<T>(weights_[i + 8 * layer_num_]);
+            gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.bias =
+               get_ptr<T>(weights_[i + 9 * layer_num_]);
+        }
+
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "IFGptj-IFGptj: set gptj_weights_ pre_decoder_embedding_table."  << std::endl;
+#endif
+        gptj_weights_.pre_decoder_embedding_table = get_ptr<T>(weights_[10 * layer_num_ + 0]);
+
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "IFGptj-IFGptj: set gptj_weights_ post_decoder_layernorm."  << std::endl;
+#endif
+        gptj_weights_.post_decoder_layernorm.gamma = get_ptr<T>(weights_[10 * layer_num_ + 1]);
+        gptj_weights_.post_decoder_layernorm.beta  = get_ptr<T>(weights_[10 * layer_num_ + 2]);
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "IFGptj-IFGptj: set gptj_weights_ post_decoder_embedding."  << std::endl;
+#endif
+        gptj_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[10 * layer_num_ + 3]);
+        gptj_weights_.post_decoder_embedding.bias = get_ptr<T>(weights_[10 * layer_num_ + 4]);
+
 #ifdef _DEBUG_PRINT_GPTJ
         std::cout << "IFGptj-IFGptj: " << " gptj_weights_ loaded" << std::endl;
 #endif
 
-       int device_id = 0;
-       ft::check_cuda_error(cudaGetDevice(&device_id));
-       ft::check_cuda_error(cudaGetDeviceProperties(&prop_, device_id));
-       FT_LOG_INFO("Device %s", prop_.name);
+        int device_id = 0;
+        ft::check_cuda_error(cudaGetDevice(&device_id));
+        ft::check_cuda_error(cudaGetDeviceProperties(&prop_, device_id));
+        FT_LOG_INFO("Device %s", prop_.name);
    }
 
    ~FTGptj() override
@@ -299,6 +347,13 @@ private:
    ft::GptJWeight<T>        gptj_weights_;
    int                      world_size_ = 1;
    int                      rank_       = 0;
+
+
+    bool isValidLayerParallelIndex(int l)
+    {
+        int local_num_layer = (int)(ceil(layer_num_ * 1.0f / pipeline_para_size_));
+        return l < layer_num_ && (l >= local_num_layer * pipeline_para_.rank_) && (l < local_num_layer * (pipeline_para_.rank_ + 1));
+    }
 };
 
 class GptjOp: public th::jit::CustomClassHolder {
