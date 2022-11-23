@@ -73,28 +73,30 @@ class GPTJWeights(object):
         self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
         # self_kernel (k, q, v)
         self.w.extend([torch.zeros(global_hidden_units, local_hidden_units * 3, dtype=torch.float16)] * layer_num)
-        # self_bias (k, q, v)
+        # self_bias (k, q, v) GPT-J does not have bias for k,q,v. This is just a placeholder.
         self.w.extend([torch.zeros(local_hidden_units * 3, dtype=torch.float16)] * layer_num)
         # self_output_kernel
         self.w.extend([torch.zeros(local_hidden_units, global_hidden_units, dtype=torch.float16)] * layer_num)
-        # self_output_bias
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        # self_output_bias no bias for output
+        # self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
         # ffn_kernel1
         self.w.extend([torch.zeros(global_hidden_units, local_inter_size, dtype=torch.float16)] * layer_num)
-        # ffn_bias1
+        # ffn_bias1 
         self.w.extend([torch.zeros(local_inter_size, dtype=torch.float16)] * layer_num)
         # ffn_kernel2
         self.w.extend([torch.zeros(local_inter_size, global_hidden_units, dtype=torch.float16)] * layer_num)
         # ffn_bias2
         self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
-        self.w.extend([torch.zeros(vocab_size, global_hidden_units, dtype=torch.float16)] * layer_num)
+        
+        # After Transformer blocks wte
+        self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=torch.float16))
         # After Transformer blocks 1 layernorm_gamma
         self.w.append(torch.zeros(global_hidden_units, dtype=torch.float16))
         # After Transformer blocks 1 layernorm_beta
         self.w.append(torch.zeros(global_hidden_units, dtype=torch.float16))
-        # post_decoder_embedding kernel
+        # After Transformer blocks lm kernel
         self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=torch.float16))
-        # post_decoder_embedding bias
+        # After Transformer blocks lm bias
         self.w.append(torch.zeros(vocab_size, dtype=torch.float16))
 
         # Initialization
@@ -139,16 +141,11 @@ class GPTJWeights(object):
                                                .format(i, tensor_para_rank), dtype=self.weights_data_type))
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.bias.{}.bin"
-                                               .format(i, tensor_para_rank), dtype=self.weights_data_type))
-                  if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
+        # GPT-J has no bias for query key and value. 
+        w.extend([torch.zeros(self.local_hidden_units * 3).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.weight.{}.bin"
                                                .format(i, tensor_para_rank), dtype=self.weights_data_type))
-                  if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
-                  for i in range(self.layer_num)])
-        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.dense.bias.bin".format(i),
-                                               dtype=self.weights_data_type))
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.bin"
@@ -182,12 +179,12 @@ class GPTJWeights(object):
             total_size = 0
             for i in range(len(w)):
                 if w[i].nelement() > 0:
-                    # print(f"Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
+                    # print(f"<{i}> Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
                     self.w[i] = w[i].reshape(self.w[i].shape)
                     total_size += (w[i].nelement() * w[i].element_size())
                 else:
                     self.w[i] = w[i]
-            # print(f"Weight type: {self.weights_data_type}, Total_para_size: {total_size/1024/1024/1024} GB.")
+            print(f"Weight type: {self.weights_data_type}, Total_para_size: {total_size/1024/1024/1024} GB.")
 
         except RuntimeError:
             raise RuntimeError(
@@ -271,13 +268,13 @@ class GPTJ(nn.Module):
         self.cuda()
 
     def load(self, ckpt_path):
-        print(f"<GPTJ>:__init__: load weight starts.")
+        print(f"<GPTJ>:load: load weight starts.")
         start_time = time.time()
         is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
                                     pipeline_para_rank=self.pipeline_para_rank)
         self.cuda()
         end_time = time.time()
-        print(f"<GPTJ>:__init__: load weight ends. Loading takes {end_time - start_time} seconds.")
+        print(f"<GPTJ>:load: load weight ends. Loading takes {end_time - start_time} seconds.")
         _profiling_torch_tensor_memory()
         return is_load
 
@@ -296,6 +293,9 @@ class GPTJ(nn.Module):
         if self.build_model:
             del self.model
             self.build_model = False
+        
+        for w_tensor in self.weights.w:
+            print(w_tensor.dtype)
         self.model = torch.classes.FasterTransformer.GptjOp(self.head_num,
                                                             self.size_per_head,
                                                             4 * self.head_num * self.size_per_head,
@@ -308,7 +308,7 @@ class GPTJ(nn.Module):
                                                             self.pipeline_para_size,
                                                             self.weights.w)
         self.build_model = True
-        print(f"<GPTJ>:cuda: starts.")
+        print(f"<GPTJ>:cuda: ends.")
 
     def forward(self,
                 start_ids,
@@ -327,6 +327,7 @@ class GPTJ(nn.Module):
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
 
+        print("<GPTJ>:forward starts")
         # Inputs to device
         start_ids = start_ids.cuda(self.device)
         start_lengths = start_lengths.cuda(self.device)

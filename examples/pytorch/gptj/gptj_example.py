@@ -51,8 +51,8 @@ def main():
                         help='path to sample output file.')
     parser.add_argument('--enable_random_seed', action='store_true',
                         help='is enable the random seed.')
-    parser.add_argument('--weights_data_type', type=str, default="fp16", choices=["fp32", "fp16"],
-                        help='Data type of FT checkpoint weights')
+    parser.add_argument('--weights_data_type', type=str, default="fp32", choices=["fp32", "fp16"],
+                        help='Data type of FT checkpoint weights. Note this is not the dtype for inference computation!')
     args = parser.parse_args()
     
     print("\n=============== Arguments ===============")
@@ -103,12 +103,12 @@ def main():
     print("[INFO] batch size: {}".format(batch_size))
 
     if args.enable_random_seed == True:
-        random_seed_tensor = torch.randint(0, 10000, size=[max_batch_size], dtype=torch.int64)
+        random_seed_tensor = torch.randint(0, 10000, size=[batch_size], dtype=torch.int64)
     else:
-        random_seed_tensor = torch.zeros([max_batch_size], dtype=torch.int64)
+        random_seed_tensor = torch.zeros(size=[batch_size], dtype=torch.int64)
 
     # Prepare model.
-    print("<gptj_example:main> Get started to load model")
+    print("<gptj_example:main> started to declare model")
     gptj = GPTJ(head_num, size_per_head, layer_num, vocab_size, rotary_embedding_dim, 
                 start_id, end_id, max_seq_len, tensor_para_size, pipeline_para_size,
                 lib_path=args.lib_path, weights_data_type=args.weights_data_type)
@@ -125,12 +125,12 @@ def main():
                             start_lengths,
                             output_len,
                             beam_width,
-                            top_k * torch.ones(size=[max_batch_size], dtype=torch.int32),
-                            top_p * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                            beam_search_diversity_rate * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                            temperature * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                            len_penalty * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                            repetition_penalty * torch.ones(size=[max_batch_size], dtype=torch.float32),
+                            top_k * torch.ones(size=[batch_size], dtype=torch.int32),
+                            top_p * torch.ones(size=[batch_size], dtype=torch.float32),
+                            beam_search_diversity_rate * torch.ones(size=[batch_size], dtype=torch.float32),
+                            temperature * torch.ones(size=[batch_size], dtype=torch.float32),
+                            len_penalty * torch.ones(size=[batch_size], dtype=torch.float32),
+                            repetition_penalty * torch.ones(size=[batch_size], dtype=torch.float32),
                             random_seed_tensor)
         # only a thread (rank 0) gets the output, while the others are supposed to return None.
         if tokens_batch is not None:
@@ -139,7 +139,7 @@ def main():
             for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
                 for beam_id in range(beam_width):
                     token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    output = enc.decode(token)
+                    output = tokenizer.decode(token)
                     outputs.append(output)
                     print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
 

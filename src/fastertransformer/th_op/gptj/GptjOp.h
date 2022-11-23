@@ -125,37 +125,36 @@ public:
                get_ptr<T>(weights_[i + 1 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.kernel =
                get_ptr<T>(weights_[i + 2 * layer_num_]);
+            // GPT-J has no bias for query key and value. passed value is zero.
             gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.bias =
                get_ptr<T>(weights_[i + 3 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.kernel =
                get_ptr<T>(weights_[i + 4 * layer_num_]);
-            gptj_weights_.decoder_layer_weights[i].self_attention_weights.attention_output_weight.bias =
-               get_ptr<T>(weights_[i + 5 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.kernel =
-               get_ptr<T>(weights_[i + 6 * layer_num_]);
+               get_ptr<T>(weights_[i + 5 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].ffn_weights.intermediate_weight.bias =
-               get_ptr<T>(weights_[i + 7 * layer_num_]);
+               get_ptr<T>(weights_[i + 6 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.kernel =
-               get_ptr<T>(weights_[i + 8 * layer_num_]);
+               get_ptr<T>(weights_[i + 7 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].ffn_weights.output_weight.bias =
-               get_ptr<T>(weights_[i + 9 * layer_num_]);
+               get_ptr<T>(weights_[i + 8 * layer_num_]);
         }
 
 #ifdef _DEBUG_PRINT_GPTJ
             std::cout << "IFGptj-IFGptj: set gptj_weights_ pre_decoder_embedding_table."  << std::endl;
 #endif
-        gptj_weights_.pre_decoder_embedding_table = get_ptr<T>(weights_[10 * layer_num_ + 0]);
+        gptj_weights_.pre_decoder_embedding_table = get_ptr<T>(weights_[9 * layer_num_ + 0]);
 
 #ifdef _DEBUG_PRINT_GPTJ
             std::cout << "IFGptj-IFGptj: set gptj_weights_ post_decoder_layernorm."  << std::endl;
 #endif
-        gptj_weights_.post_decoder_layernorm.gamma = get_ptr<T>(weights_[10 * layer_num_ + 1]);
-        gptj_weights_.post_decoder_layernorm.beta  = get_ptr<T>(weights_[10 * layer_num_ + 2]);
+        gptj_weights_.post_decoder_layernorm.gamma = get_ptr<T>(weights_[9 * layer_num_ + 1]);
+        gptj_weights_.post_decoder_layernorm.beta  = get_ptr<T>(weights_[9 * layer_num_ + 2]);
 #ifdef _DEBUG_PRINT_GPTJ
             std::cout << "IFGptj-IFGptj: set gptj_weights_ post_decoder_embedding."  << std::endl;
 #endif
-        gptj_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[10 * layer_num_ + 3]);
-        gptj_weights_.post_decoder_embedding.bias = get_ptr<T>(weights_[10 * layer_num_ + 4]);
+        gptj_weights_.post_decoder_embedding.kernel = get_ptr<T>(weights_[9 * layer_num_ + 3]);
+        gptj_weights_.post_decoder_embedding.bias = get_ptr<T>(weights_[9 * layer_num_ + 4]);
 
 #ifdef _DEBUG_PRINT_GPTJ
         std::cout << "IFGptj-IFGptj: " << " gptj_weights_ loaded" << std::endl;
@@ -191,6 +190,9 @@ public:
                 th::optional<th::Tensor> repetition_penalty_opt,
                 th::optional<th::Tensor> random_seed_opt) override
    {
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "IFGptj-forward: starts." << std::endl;
+#endif
        auto stream                 = at::cuda::getCurrentCUDAStream().stream();
        cublasHandle_t cublasHandle = at::cuda::getCurrentCUDABlasHandle();
        cublasSetStream(cublasHandle, stream);
@@ -214,6 +216,9 @@ public:
        const size_t max_input_length   = (size_t)input_ids.size(1);
        const int    total_output_len   = (int)(max_input_length + request_output_len);
 
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "IFGptj-forward: start to create ft::GptJ<T>." << std::endl;
+#endif
        ft::GptJ<T> gptj = ft::GptJ<T>(request_batch_size,
                               total_output_len,
                               max_input_length,
@@ -242,6 +247,10 @@ public:
                               &allocator,
                               false,
                               &prop_);
+
+#ifdef _DEBUG_PRINT_GPTJ
+        std::cout << "IFGptj-forward: created ft::GptJ<T>." << std::endl;
+#endif
 
        std::vector<uint32_t> output_seq_len(request_batch_size, total_output_len);
 

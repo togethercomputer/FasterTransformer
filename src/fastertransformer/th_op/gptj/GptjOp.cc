@@ -24,6 +24,9 @@ GptjOp::GptjOp(const int64_t                 head_num,
 
    switch (st_) {
        case at::ScalarType::Float:
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "GptjOp-GptjOp: created ft::FTGptj<float>." << std::endl;
+#endif
            ftgptj = new FTGptj<float>((size_t)head_num,
                                       (size_t)size_per_head,
                                       (size_t)inter_size,
@@ -37,6 +40,9 @@ GptjOp::GptjOp(const int64_t                 head_num,
                                       weights);
            break;
        case at::ScalarType::Half:
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "GptjOp-GptjOp: created ft::FTGptj<half>." << std::endl;
+#endif
            ftgptj = new FTGptj<half>((size_t)head_num,
                                      (size_t)size_per_head,
                                      (size_t)inter_size,
@@ -50,6 +56,9 @@ GptjOp::GptjOp(const int64_t                 head_num,
                                      weights);
            break;
 #ifdef ENABLE_BF16
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "GptjOp-GptjOp: created ft::FTGptj<__nv_bfloat16>." << std::endl;
+#endif
        case at::ScalarType::BFloat16:
            ftgptj = new FTGptj<__nv_bfloat16>((size_t)head_num,
                                               (size_t)size_per_head,
