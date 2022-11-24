@@ -44,7 +44,8 @@ def main():
                         help='max batch size.')
     parser.add_argument('--repetition_penalty', type=float, default=1.,
                         help='repetition penalty')
-    parser.add_argument('--data_type', type=str, choices=['fp32', 'fp16', 'bf16'], default='fp16')
+    parser.add_argument('--infer_data_type', type=str, choices=['fp32', 'fp16', 'bf16'], default='fp16',
+                        help='Data type for inference computation!')
     parser.add_argument('--sample_input_file', type=str, default=None,
                         help='path to sample input file. If not set, it runs with no context inputs.')
     parser.add_argument('--sample_output_file', type=str, default=None,
@@ -73,7 +74,6 @@ def main():
     tensor_para_size = args.tensor_para_size
     pipeline_para_size = args.pipeline_para_size
     max_batch_size = args.max_batch_size
-
 
     output_len = args.output_len
     beam_width = args.beam_width
@@ -112,12 +112,8 @@ def main():
     gptj = GPTJ(head_num, size_per_head, layer_num, vocab_size, rotary_embedding_dim, 
                 start_id, end_id, max_seq_len, tensor_para_size, pipeline_para_size,
                 lib_path=args.lib_path, weights_data_type=args.weights_data_type)
-    if not gptj.load(ckpt_path=args.ckpt_path):
+    if not gptj.load(ckpt_path=args.ckpt_path, infer_data_type=args.infer_data_type):
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
-    if args.data_type == 'fp16':
-        gptj.half()
-    elif args.data_type == 'bf16':
-        gptj.bfloat16()
 
     with torch.no_grad():
         # Generate tokens.
