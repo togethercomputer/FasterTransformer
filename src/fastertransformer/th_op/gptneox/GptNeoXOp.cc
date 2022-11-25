@@ -58,6 +58,7 @@ GptNeoXOp::GptNeoXOp(const int64_t                 head_num,
                                      (bool)use_gptj_residual,
                                      weights);
            break;
+/*
 #ifdef ENABLE_BF16
 #ifdef _DEBUG_PRINT_GPTNEOX
             std::cout << "GptNeoXOp-GptNeoXOp: created ft::FTGptNeoX<__nv_bfloat16>." << std::endl;
@@ -77,6 +78,7 @@ GptNeoXOp::GptNeoXOp(const int64_t                 head_num,
                                               weights);
            break;
 #endif
+*/
        default:
            throw std::runtime_error("Wrong Tensor type.");
    }

@@ -144,7 +144,7 @@ class GPTNeoxWeights(object):
                                                .format(i, tensor_para_rank), dtype=self.weights_data_type))
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
-         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.bias.{}.bin"
+        w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.attention.query_key_value.bias.{}.bin"
                                                .format(i, tensor_para_rank), dtype=self.weights_data_type))
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
@@ -158,7 +158,7 @@ class GPTNeoxWeights(object):
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
         else:
-            w.extend([torch.zeros(self.local_hidden_units * 3).to(type_map[self.weights_data_type])
+            w.extend([torch.zeros(self.local_hidden_units).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
         
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.bin"
@@ -175,7 +175,7 @@ class GPTNeoxWeights(object):
                   for i in range(self.layer_num)])
         
         if self.use_gptj_residual:
-            w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.attention.bias.bin"
+            w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.attention.bias.sum.bin"
                                                .format(i), dtype=self.weights_data_type))
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
@@ -206,7 +206,8 @@ class GPTNeoxWeights(object):
             total_size = 0
             for i in range(len(w)):
                 if w[i].nelement() > 0:
-                    # print(f"<{i}> Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
+                    if dist.get_rank()==0:
+                        print(f"<{i}> Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
                     self.w[i] = w[i].reshape(self.w[i].shape)
                     total_size += (w[i].nelement() * w[i].element_size())
                 else:
@@ -294,19 +295,19 @@ class GPTNeox(nn.Module):
         self.pipeline_para_rank = self.rank // self.tensor_para_size
 
     def load(self, ckpt_path, infer_data_type):
-        print(f"<GPTNeox>:load: load weight starts.")
+        if dist.get_rank()==0:
+            print(f"<GPTNeox>:load: load weight starts.")
         start_time = time.time()
         is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
                                     pipeline_para_rank=self.pipeline_para_rank)
         if infer_data_type == 'fp16':
             self.weights._map(lambda w: w.half())
-        elif infer_data_type == 'bfp16':
-            self.weights._map(lambda w: w.bfloat16())
-        
-        print("<GPTNeox>:load: call self.cuda()")
+        if dist.get_rank()==0:
+            print("<GPTNeox>:load: call self.cuda()")
         self.cuda()
         end_time = time.time()
-        print(f"<GPTNeox>:load: load weight ends. Loading takes {end_time - start_time} seconds.")
+        if dist.get_rank()==0:
+            print(f"<GPTNeox>:load: load weight ends. Loading takes {end_time - start_time} seconds.")
         _profiling_torch_tensor_memory()
         return is_load
 
@@ -314,12 +315,9 @@ class GPTNeox(nn.Module):
         self.weights._map(lambda w: w.half())
         self.cuda()
 
-    def bfloat16(self):
-        self.weights._map(lambda w: w.bfloat16())
-        self.cuda()
-
     def cuda(self):
-        print(f"<GPTNeox>:cuda: starts.")
+        if dist.get_rank()==0:
+            print(f"<GPTNeox>:cuda: starts.")
         self.weights._map(lambda w: w.cuda(self.device))
 
         if self.build_model:
@@ -328,7 +326,7 @@ class GPTNeox(nn.Module):
         
         for w_tensor in self.weights.w:
             print(w_tensor.dtype)
-        self.model = torch.classes.FasterTransformer.GptNeoxOp(self.head_num,
+        self.model = torch.classes.FasterTransformer.GptNeoXOp(self.head_num,
                                                                self.size_per_head,
                                                                4 * self.head_num * self.size_per_head,
                                                                self.layer_num,
@@ -338,10 +336,11 @@ class GPTNeox(nn.Module):
                                                                self.end_id,
                                                                self.tensor_para_size,
                                                                self.pipeline_para_size,
-                                                               self.use_gptj_residual_,
+                                                               self.use_gptj_residual,
                                                                self.weights.w)
         self.build_model = True
-        print(f"<GPTNeox>:cuda: ends.")
+        if dist.get_rank()==0:
+            print(f"<GPTNeox>:cuda: ends.")
 
     def forward(self,
                 start_ids,
@@ -359,8 +358,8 @@ class GPTNeox(nn.Module):
             self.cuda()
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
-
-        print("<GPTNeox>:forward starts")
+        if dist.get_rank()==0:
+            print("<GPTNeox>:forward starts")
         # Inputs to device
         start_ids = start_ids.cuda(self.device)
         start_lengths = start_lengths.cuda(self.device)
@@ -376,7 +375,8 @@ class GPTNeox(nn.Module):
                                      len_penalty,  # optional, can be None
                                      repetition_penalty,  # optional, can be None
                                      random_seed)  # optional, can be None
-        print(f"<GPTNeox>:forward: {outputs}")        
+        if dist.get_rank()==0:
+            print(f"<GPTNeox>:forward: {outputs}")        
         output_ids, output_lengths, output_cum_log_probs = outputs
         return output_ids
 

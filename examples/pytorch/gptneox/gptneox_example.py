@@ -10,13 +10,13 @@ import torch
 import numpy as np
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../..")
-from examples.pytorch.GPTNeox.utils.GPTNeox import GPTNeox, GPTNeoxWeights
+from examples.pytorch.gptneox.utils.gptneox import GPTNeox, GPTNeoxWeights
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--hf_model_name', type=str, default='EleutherAI/gpt-j-6B',
+    parser.add_argument('--hf_model_name', type=str, default='EleutherAI/gpt-neox-20b',
                         help='hugging face model name (used to load config).')
     parser.add_argument('--output_len', type=int, default=32,
                         help='output sequence length to generate.')
@@ -64,14 +64,15 @@ def main():
     print("=========================================\n")
     
     hf_config = vars(AutoConfig.from_pretrained(args.hf_model_name))
-    head_num = hf_config['n_head']   
-    size_per_head = hf_config['n_embd'] // head_num
-    layer_num = hf_config['n_layer']
+    print(hf_config)
+    head_num = hf_config['num_attention_heads']   
+    size_per_head = hf_config['hidden_size'] // head_num
+    layer_num = hf_config['num_hidden_layers']
     vocab_size = hf_config['vocab_size']
-    rotary_embedding_dim = hf_config['rotary_dim']
+    rotary_embedding_dim = hf_config['rotary_emb_base']
     start_id = hf_config['bos_token_id']
     end_id = hf_config['eos_token_id']    
-    max_seq_len = hf_config['n_positions']
+    max_seq_len = hf_config['max_position_embeddings']
     
     tensor_para_size = args.tensor_para_size
     pipeline_para_size = args.pipeline_para_size
@@ -102,9 +103,7 @@ def main():
             
     start_ids = pad_sequence(start_ids, batch_first=True, padding_value=end_id)
     start_lengths = torch.IntTensor(start_lengths)
-    print(f"start_ids: shape ({start_ids.shape}) ids: {start_ids}")
-    print("[INFO] batch size: {}".format(batch_size))
-
+    
     if args.enable_random_seed == True:
         random_seed_tensor = torch.randint(0, 10000, size=[batch_size], dtype=torch.int64)
     else:
@@ -113,11 +112,14 @@ def main():
     # Prepare model.
     print("<gptneox_example:main> started to declare model")
     gptneox = GPTNeox(head_num, size_per_head, layer_num, vocab_size, rotary_embedding_dim, 
-                start_id, end_id, max_seq_len, tensor_para_size, pipeline_para_size,
+                start_id, end_id, max_seq_len, tensor_para_size, pipeline_para_size, use_gptj_residual,
                 lib_path=args.lib_path, weights_data_type=args.weights_data_type)
     if not gptneox.load(ckpt_path=args.ckpt_path, infer_data_type=args.infer_data_type):
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
 
+    print(f"start_ids: shape ({start_ids.shape}) ids: {start_ids}, start_lengths: {start_lengths}")
+    print("[INFO] batch size: {}".format(batch_size))
+    
     with torch.no_grad():
         # Generate tokens.
         tokens_batch = gptneox(start_ids,

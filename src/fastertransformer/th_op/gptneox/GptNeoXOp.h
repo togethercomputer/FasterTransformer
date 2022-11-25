@@ -95,7 +95,7 @@ public:
         for (int i = 0;  i< (int) layer_num_; i++){
             if(isValidLayerParallelIndex(i)){
                 gptneox_weights_.decoder_layer_weights.push_back(new ft::GptNeoXDecoderLayerWeight<T> (
-                    size_per_head_*head_num_, inter_size_, tensor_para_size_, tensor_para_.rank_));       
+                    size_per_head_*head_num_, inter_size_, tensor_para_size_, tensor_para_.rank_, use_gptj_residual_));       
             }
             else{
                 gptneox_weights_.decoder_layer_weights.push_back(new ft::GptNeoXDecoderLayerWeight<T>(0, 0));
