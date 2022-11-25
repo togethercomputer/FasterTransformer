@@ -10,8 +10,7 @@ RUN mkdir -p build && \
     make && \
     pip install -r ../examples/pytorch/gpt/requirement.txt && \
     pip install -r ../examples/pytorch/gpt/common/requirement.txt && \
-    rm -r ../src/fastertransformer/th_op/gptj/* && \ 
-    rm -r ../examples/pytorch/gpt/*  && \
-    rm -r ../examples/pytorch/gptj/*
+    rm -r ../src/fastertransformer/th_op/* && \ 
+    rm -r ../examples/pytorch/* 
 
 
