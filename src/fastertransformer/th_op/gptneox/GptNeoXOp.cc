@@ -45,7 +45,7 @@ GptNeoXOp::GptNeoXOp(const int64_t                 head_num,
 #ifdef _DEBUG_PRINT_GPTNEOX
             std::cout << "GptNeoXOp-GptNeoXOp: created ft::FTGptNeoX<half>." << std::endl;
 #endif
-           ftgptneox = new FTGptneoX<half>((size_t)head_num,
+           ftgptneox = new FTGptNeoX<half>((size_t)head_num,
                                      (size_t)size_per_head,
                                      (size_t)inter_size,
                                      (size_t)layer_num,
