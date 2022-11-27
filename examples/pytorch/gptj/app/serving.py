@@ -12,6 +12,29 @@ from utils.gptj import GPTJ
 import argparse
 
 
+def post_processing_text(output_text, stop_tokens):
+    print(f"<post_processing_text> output_text: {output_text}")
+
+    filtered_stop_tokens = []
+    for token in stop_tokens:
+        if token != '':
+            filtered_stop_tokens.append(token)
+            
+    print(f"<post_processing_text> stop_tokens: {filtered_stop_tokens}.")
+
+    end_pos = len(output_text)
+    print(f"<post_processing_text>1 end_pos: {end_pos}.")
+    for stop_token in filtered_stop_tokens:
+        if output_text.find(stop_token) != -1:
+            end_pos = min(output_text.find(stop_token), end_pos)
+
+    print(f"<post_processing_text>2 end_pos: {end_pos}.")
+    print(f"<post_processing_text> text: {output_text}, end_pos: {end_pos}")
+    post_processed_text = output_text[:end_pos]
+    print(f"<post_processing_text> input: {output_text}")
+    print(f"<post_processing_text> output: {post_processed_text}")
+    return post_processed_text
+
 
 class FastGPTJTInference(FastInferenceInterface):
     def __init__(self, model_name: str, args=None) -> None:
@@ -77,11 +100,12 @@ class FastGPTJTInference(FastInferenceInterface):
         self.task_info["output_len"] = args.get("max_tokens", 16)
         self.task_info["beam_width"] = args.get("beam_width", 1)
         self.task_info["top_k"] = args.get("top_k", 50)
-        self.task_info["top_p"] = args.get("top_p", 0)
+        self.task_info["top_p"] = args.get("top_p", 0.0)
         self.task_info["beam_search_diversity_rate"] = args.get("beam_search_diversity_rate", 0)
         self.task_info["temperature"] = args.get("temperature", 0.1)
         self.task_info["len_penalty"] = args.get("len_penalty", 0)
         self.task_info["repetition_penalty"] = args.get("repetition_penalty", 1.0)
+        self.task_info["stop"] =  args.get("stop", [])
         # self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         # self.task_info["return_output_length"] = args.get("return_output_length", 0)
         result = self._run_inference()
@@ -134,7 +158,7 @@ class FastGPTJTInference(FastInferenceInterface):
                 output = self.tokenizer.decode(token)
                 print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
                 choice = {
-                    "text": output,
+                    "text": post_processing_text(output, self.task_info["stop"]),
                     "index": beam_id,
                     "finish_reason": "length"
                 }
