@@ -1,0 +1,12 @@
+{
+    "recipe":"image.def",
+    "target":"together.gptjt6bv1.sif",
+    "scripts": {
+        "start":"python3 /app/serving.py",
+        "bash": "/bin/bash"
+    },
+    "bind": {
+        
+    },
+    "nvidia": true
+}

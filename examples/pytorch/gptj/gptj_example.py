@@ -8,6 +8,7 @@ import argparse
 import timeit
 import torch
 import numpy as np
+import time
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../..")
 from examples.pytorch.gptj.utils.gptj import GPTJ, GPTJWeights
@@ -115,6 +116,7 @@ def main():
     if not gptj.load(ckpt_path=args.ckpt_path, infer_data_type=args.infer_data_type):
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
 
+    time.sleep(10)
     with torch.no_grad():
         # Generate tokens.
         tokens_batch = gptj(start_ids,

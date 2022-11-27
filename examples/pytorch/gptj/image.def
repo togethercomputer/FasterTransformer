@@ -1,0 +1,8 @@
+Bootstrap: docker
+From: xzyaoi/faster-transformer:latest
+
+%files
+    app /app
+    
+%post
+    pip3 install -r /app/requirements.txt
