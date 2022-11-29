@@ -1,5 +1,5 @@
 torch
 transformers
-together_worker==0.1.1
+together_worker
 loguru
 boto3
