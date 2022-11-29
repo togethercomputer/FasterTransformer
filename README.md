@@ -8,7 +8,7 @@ mpirun -n 8 --allow-run-as-root python /workspace/Port_FasterTransformer/example
 
 mpirun -n 8 --allow-run-as-root python /workspace/Port_FasterTransformer/examples/pytorch/gpt/together_opt_inference.py
 
-mpirun -n 1 --allow-run-as-root python /workspace/Port_FasterTransformer/examples/pytorch/gptj/gptj_example.py --weights_data_type fp32 --infer_data_type fp16 --tensor_para_size 1 --ckpt_path /workspace/Port_FasterTransformer/build/model/gpt-j-6B-tp1/1-gpu --lib_path /workspace/Port_FasterTransformer/build/lib/libth_gptj.so --sample_input_file /workspace/Port_FasterTransformer/build/model/foo_txt_16.txt
+mpirun -n 1 --allow-run-as-root python /workspace/Port_FasterTransformer/examples/pytorch/gptj/app/gptj_example.py --weights_data_type fp32 --infer_data_type fp16 --tensor_para_size 1 --ckpt_path /workspace/Port_FasterTransformer/build/model/gpt-j-6b-tp1/1-gpu --lib_path /workspace/Port_FasterTransformer/build/lib/libth_gptj.so --sample_input_file /workspace/Port_FasterTransformer/build/model/foo_txt_16.txt
 
 mpirun -n 2 --allow-run-as-root python /workspace/Port_FasterTransformer/examples/pytorch/gptneox/gptneox_example.py --use_gptj_residual --weights_data_type fp32 --infer_data_type fp16 --tensor_para_size 2 --ckpt_path /workspace/Port_FasterTransformer/build/model/gpt-neox-20b-tp2/2-gpu --lib_path /workspace/Port_FasterTransformer/build/lib/libth_gptneox.so --sample_input_file /workspace/Port_FasterTransformer/build/model/foo_txt_16.txt
 

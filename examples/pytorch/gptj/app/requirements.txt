@@ -2,3 +2,4 @@ torch
 transformers
 together_worker==0.1.1
 loguru
+boto3

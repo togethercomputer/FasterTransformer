@@ -10,8 +10,7 @@ import torch
 import numpy as np
 import time
 dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(dir_path + "/../../..")
-from examples.pytorch.gptj.utils.gptj import GPTJ, GPTJWeights
+from utils.gptj import GPTJ
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
 
@@ -27,7 +26,7 @@ def main():
                         help='top k candidate num')
     parser.add_argument('--top_p', type=float, default=0.,
                         help='top p probability threshold')
-    parser.add_argument('--temperature', type=float, default=1.,
+    parser.add_argument('--temperature', type=float, default=0.5,
                         help='temperature')
     parser.add_argument('--len_penalty', type=float, default=0.,
                         help='len_penalty')
@@ -115,36 +114,38 @@ def main():
                 lib_path=args.lib_path, weights_data_type=args.weights_data_type)
     if not gptj.load(ckpt_path=args.ckpt_path, infer_data_type=args.infer_data_type):
         print("[WARNING] Checkpoint file not found. Model loading is skipped.")
+        
+    time.sleep(20)
+    
+    for i in range(10):
+        with torch.no_grad():
+            # Generate tokens.
+            tokens_batch = gptj(start_ids,
+                                start_lengths,
+                                output_len,
+                                beam_width,
+                                top_k * torch.ones(size=[batch_size], dtype=torch.int32),
+                                top_p * torch.ones(size=[batch_size], dtype=torch.float32),
+                                beam_search_diversity_rate * torch.ones(size=[batch_size], dtype=torch.float32),
+                                temperature * torch.ones(size=[batch_size], dtype=torch.float32),
+                                len_penalty * torch.ones(size=[batch_size], dtype=torch.float32),
+                                repetition_penalty * torch.ones(size=[batch_size], dtype=torch.float32),
+                                random_seed_tensor)
+            # only a thread (rank 0) gets the output, while the others are supposed to return None.
+            if tokens_batch is not None:
+                outputs = []
+                tokens_batch = tokens_batch.cpu().numpy()
+                for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
+                    for beam_id in range(beam_width):
+                        token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                        output = tokenizer.decode(token)
+                        outputs.append(output)
+                        print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
 
-    time.sleep(10)
-    with torch.no_grad():
-        # Generate tokens.
-        tokens_batch = gptj(start_ids,
-                            start_lengths,
-                            output_len,
-                            beam_width,
-                            top_k * torch.ones(size=[batch_size], dtype=torch.int32),
-                            top_p * torch.ones(size=[batch_size], dtype=torch.float32),
-                            beam_search_diversity_rate * torch.ones(size=[batch_size], dtype=torch.float32),
-                            temperature * torch.ones(size=[batch_size], dtype=torch.float32),
-                            len_penalty * torch.ones(size=[batch_size], dtype=torch.float32),
-                            repetition_penalty * torch.ones(size=[batch_size], dtype=torch.float32),
-                            random_seed_tensor)
-        # only a thread (rank 0) gets the output, while the others are supposed to return None.
-        if tokens_batch is not None:
-            outputs = []
-            tokens_batch = tokens_batch.cpu().numpy()
-            for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
-                for beam_id in range(beam_width):
-                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    output = tokenizer.decode(token)
-                    outputs.append(output)
-                    print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
-
-            if args.sample_output_file:
-                with open(args.sample_output_file, "w+") as f:
-                    outputs = [o.replace("\n", "\\n") for o in outputs]
-                    f.writelines("\n".join(outputs))
+                if args.sample_output_file:
+                    with open(args.sample_output_file, "w+") as f:
+                        outputs = [o.replace("\n", "\\n") for o in outputs]
+                        f.writelines("\n".join(outputs))
         
 
 if __name__ == '__main__':

@@ -105,6 +105,10 @@ public:
 #endif
             gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.gamma =
                get_ptr<T>(weights_[i + 0 * layer_num_]);
+#ifdef _DEBUG_PRINT_GPTJ
+            std::cout << "IFGptj-IFGptj: layer <" << i <<"> pre_layernorm_weights.gamma: " << gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.gamma;
+            std::cout << " weights ptr:" << get_ptr<T>(weights_[i + 0 * layer_num_]) << std::endl;
+#endif
             gptj_weights_.decoder_layer_weights[i].pre_layernorm_weights.beta =
                get_ptr<T>(weights_[i + 1 * layer_num_]);
             gptj_weights_.decoder_layer_weights[i].self_attention_weights.query_weight.kernel =

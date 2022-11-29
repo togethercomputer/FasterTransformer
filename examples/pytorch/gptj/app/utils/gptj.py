@@ -279,24 +279,12 @@ class GPTJ(nn.Module):
         _profiling_torch_tensor_memory()
         return is_load
 
-    def half(self):
-        self.weights._map(lambda w: w.half())
-        self.cuda()
-
-    def bfloat16(self):
-        self.weights._map(lambda w: w.bfloat16())
-        self.cuda()
-
     def cuda(self):
         print(f"<GPTJ>:cuda: starts.")
         self.weights._map(lambda w: w.cuda(self.device))
-
-        if self.build_model:
-            del self.model
-            self.build_model = False
-        
-        for w_tensor in self.weights.w:
-            print(w_tensor.dtype)
+        assert self.build_model is False
+        print(f"<GPTJ>:cuda: w_tensor 0 type: {self.weights.w[0].dtype}")
+        print(f"<GPTJ>:cuda: w_tensor -1 type: {self.weights.w[-1].dtype}")
         self.model = torch.classes.FasterTransformer.GptjOp(self.head_num,
                                                             self.size_per_head,
                                                             4 * self.head_num * self.size_per_head,
@@ -309,6 +297,7 @@ class GPTJ(nn.Module):
                                                             self.pipeline_para_size,
                                                             self.weights.w)
         self.build_model = True
+        # del self.weights.w
         print(f"<GPTJ>:cuda: ends.")
 
     def forward(self,
@@ -323,8 +312,6 @@ class GPTJ(nn.Module):
                 len_penalty=None,
                 repetition_penalty=None,
                 random_seed=None):
-        if not self.build_model:
-            self.cuda()
         input_len = start_ids.size(1)
         assert input_len > 0, "input len must be larger than zero. For an unconditional case, use start_id as the first token."
 

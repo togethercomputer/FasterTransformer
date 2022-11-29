@@ -88,7 +88,7 @@ class FastGPTJTInference(FastInferenceInterface):
    
         if not self.gptj_model.load(ckpt_path=ckpt_path, infer_data_type='fp16'):
             print("[WARNING] Checkpoint file not found. Model loading is skipped.")
-                
+        torch.cuda.empty_cache()
         print(f"<FastGPTJInference.__init__> initialization done")
 
     def dispatch_request(self, args, env) -> Dict:
@@ -97,18 +97,19 @@ class FastGPTJTInference(FastInferenceInterface):
         args = {k: v for k, v in args.items() if v is not None}
         # Inputs
         self.task_info["prompt_seqs"] = [args['prompt']]
-        self.task_info["output_len"] = args.get("max_tokens", 16)
-        self.task_info["beam_width"] = args.get("beam_width", 1)
-        self.task_info["top_k"] = args.get("top_k", 50)
-        self.task_info["top_p"] = args.get("top_p", 0.0)
-        self.task_info["beam_search_diversity_rate"] = args.get("beam_search_diversity_rate", 0)
-        self.task_info["temperature"] = args.get("temperature", 0.1)
-        self.task_info["len_penalty"] = args.get("len_penalty", 0)
-        self.task_info["repetition_penalty"] = args.get("repetition_penalty", 1.0)
+        self.task_info["output_len"] = int(args.get("max_tokens", 16))
+        self.task_info["beam_width"] = int(args.get("beam_width", 1))
+        self.task_info["top_k"] = int(args.get("top_k", 50))
+        self.task_info["top_p"] = float(args.get("top_p", 0.0))
+        self.task_info["beam_search_diversity_rate"] = float(args.get("beam_search_diversity_rate", 0))
+        self.task_info["temperature"] = float(args.get("temperature", 0.1))
+        self.task_info["len_penalty"] = float(args.get("len_penalty", 0))
+        self.task_info["repetition_penalty"] = float(args.get("repetition_penalty", 1.0))
         self.task_info["stop"] =  args.get("stop", [])
         # self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         # self.task_info["return_output_length"] = args.get("return_output_length", 0)
         result = self._run_inference()
+        torch.cuda.empty_cache()
         print(f"<FastGPTJInference.dispatch_request> return: {result}")
         return result
 
@@ -126,6 +127,7 @@ class FastGPTJTInference(FastInferenceInterface):
             
             time = timeit.default_timer()
             max_batch_size = self.max_batch_size
+            print(self.task_info)
             tokens_batch = self.gptj_model(start_ids,
                                     start_lengths,
                                     self.task_info["output_len"],
@@ -155,6 +157,7 @@ class FastGPTJTInference(FastInferenceInterface):
             item = {'choices': [], }
             for beam_id in range(self.task_info["beam_width"]):
                 token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                print(f"[INFO] raw token: {token}")
                 output = self.tokenizer.decode(token)
                 print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
                 choice = {
