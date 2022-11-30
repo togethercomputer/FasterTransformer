@@ -91,8 +91,10 @@ public:
         gptj_weights_.decoder_layer_weights.reserve(layer_num_);
         for (int i = 0;  i< (int) layer_num_; i++){
             if(isValidLayerParallelIndex(i)){
-                gptj_weights_.decoder_layer_weights.push_back(ft::GptJDecoderLayerWeight<T> (
-                    size_per_head_*head_num_, inter_size_, tensor_para_size_, tensor_para_.rank_));       
+                // gptj_weights_.decoder_layer_weights.push_back(ft::GptJDecoderLayerWeight<T> (
+                // size_per_head_*head_num_, inter_size_, tensor_para_size_, tensor_para_.rank_, false));  
+                // This is a dirty fix due to the orangization of FT classes for mem management, this solves our problem for now.   
+                gptj_weights_.decoder_layer_weights.push_back(ft::GptJDecoderLayerWeight<T>(0, 0, tensor_para_size_, tensor_para_.rank_));
             }
             else{
                 gptj_weights_.decoder_layer_weights.push_back(ft::GptJDecoderLayerWeight<T>(0, 0));
