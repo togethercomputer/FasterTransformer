@@ -206,8 +206,8 @@ class GPTNeoxWeights(object):
             total_size = 0
             for i in range(len(w)):
                 if w[i].nelement() > 0:
-                    if dist.get_rank()==0:
-                        print(f"<{i}> Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
+                    # if dist.get_rank()==0:
+                    #    print(f"<{i}> Expected shape: {self.w[i].shape} loaded shape: {w[i].shape})")
                     self.w[i] = w[i].reshape(self.w[i].shape)
                     total_size += (w[i].nelement() * w[i].element_size())
                 else:
@@ -324,8 +324,10 @@ class GPTNeox(nn.Module):
             del self.model
             self.build_model = False
         
-        for w_tensor in self.weights.w:
-            print(w_tensor.dtype)
+        #for w_tensor in self.weights.w:
+        if dist.get_rank()==0:
+            print(f"<GPTNeox>:cuda: w_tensor 0 type: {self.weights.w[0].dtype}")
+            print(f"<GPTNeox>:cuda: w_tensor -1 type: {self.weights.w[-1].dtype}")
         self.model = torch.classes.FasterTransformer.GptNeoXOp(self.head_num,
                                                                self.size_per_head,
                                                                4 * self.head_num * self.size_per_head,

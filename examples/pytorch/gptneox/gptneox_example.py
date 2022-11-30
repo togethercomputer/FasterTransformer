@@ -70,7 +70,8 @@ def main():
     size_per_head = hf_config['hidden_size'] // head_num
     layer_num = hf_config['num_hidden_layers']
     vocab_size = hf_config['vocab_size']
-    rotary_embedding_dim = hf_config['rotary_emb_base']
+    # rotary_embedding_dim = hf_config['rotary_emb_base']
+    rotary_embedding_dim = 24
     start_id = hf_config['bos_token_id']
     end_id = hf_config['eos_token_id']    
     max_seq_len = hf_config['max_position_embeddings']
@@ -120,9 +121,9 @@ def main():
 
     print(f"start_ids: shape ({start_ids.shape}) ids: {start_ids}, start_lengths: {start_lengths}")
     print("[INFO] batch size: {}".format(batch_size))
-    time.sleep(10)
+    # time.sleep(10)
     
-    for i in range(10):
+    for i in range(3):
         with torch.no_grad():
             # Generate tokens.
             tokens_batch = gptneox(start_ids,
@@ -143,6 +144,7 @@ def main():
                 for i, (context, tokens) in enumerate(zip(contexts, tokens_batch)):
                     for beam_id in range(beam_width):
                         token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                        print(f"[INFO] raw token: {token}")
                         output = tokenizer.decode(token)
                         outputs.append(output)
                         print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
