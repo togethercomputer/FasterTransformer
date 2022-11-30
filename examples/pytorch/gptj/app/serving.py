@@ -12,6 +12,24 @@ from utils.gptj import GPTJ
 import argparse
 
 
+def get_int(input_: str, default=0) -> int:
+    try:
+        my_num = int(input_)
+        return my_num
+    except ValueError:
+        print(f'Invalid int {input_} set to default: {default}')
+        return default
+
+
+def get_float(input_: str, default=0.0) -> float:
+    try:
+        my_num = float(input_)
+        return my_num
+    except ValueError:
+        print(f'Invalid float {input_} set to default: {default}')
+        return default
+
+
 def post_processing_text(output_text, stop_tokens):
     print(f"<post_processing_text> output_text: {output_text}")
 
@@ -96,22 +114,42 @@ class FastGPTJTInference(FastInferenceInterface):
         args = args[0]
         args = {k: v for k, v in args.items() if v is not None}
         # Inputs
-        self.task_info["prompt_seqs"] = [args['prompt']]
-        self.task_info["output_len"] = int(args.get("max_tokens", 16))
-        self.task_info["beam_width"] = int(args.get("beam_width", 1))
-        self.task_info["top_k"] = int(args.get("top_k", 50))
-        self.task_info["top_p"] = float(args.get("top_p", 0.0))
-        self.task_info["beam_search_diversity_rate"] = float(args.get("beam_search_diversity_rate", 0))
-        self.task_info["temperature"] = float(args.get("temperature", 0.1))
-        self.task_info["len_penalty"] = float(args.get("len_penalty", 0))
-        self.task_info["repetition_penalty"] = float(args.get("repetition_penalty", 1.0))
+        self.task_info["prompt_seqs"] = [str(args['prompt'])]
+        self.task_info["output_len"] = get_int(args.get("max_tokens", 16), default=16)
+        self.task_info["beam_width"] = get_int(args.get("beam_width", 1), default=1)
+        self.task_info["top_k"] = get_int(args.get("top_k", 50), default=50)
+        self.task_info["top_p"] = get_float(args.get("top_p", 0.0), default=0.0)
+        self.task_info["beam_search_diversity_rate"] = get_float(args.get("beam_search_diversity_rate", 0.0), default=0.0)
+        self.task_info["temperature"] = get_float(args.get("temperature", 0.8), default=0.8)
+        self.task_info["len_penalty"] = get_float(args.get("len_penalty", 0.0), default=0.0)
+        self.task_info["repetition_penalty"] = get_float(args.get("repetition_penalty", 1.0), default=1.0)
         self.task_info["stop"] =  args.get("stop", [])
         # self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         # self.task_info["return_output_length"] = args.get("return_output_length", 0)
-        result = self._run_inference()
-        torch.cuda.empty_cache()
-        print(f"<FastGPTJInference.dispatch_request> return: {result}")
-        return result
+        if len(self.task_info["prompt_seqs"][0]) == 0 or self.task_info["output_len"] == 0:
+            inferenece_result = []
+            item = {'choices': [], }
+            for beam_id in range(self.task_info["beam_width"]):
+                choice = {
+                    "text": '',
+                    "index": beam_id,
+                    "finish_reason": "length"
+                }
+            item['choices'].append(choice)
+            inferenece_result.append(item)
+            #  So far coordinator does not support batch. 
+            result = {
+                "result_type": RequestTypeLanguageModelInference,
+                "choices": inferenece_result[0]['choices'],
+                "raw_compute_time": 0.0
+            }
+            print(f"<FastGPTJInference.dispatch_request> (not FT runs, 0 input or output) return: {result}")
+            return result
+        else:
+            result = self._run_inference()
+            torch.cuda.empty_cache()
+            print(f"<FastGPTJInference.dispatch_request> return: {result}")
+            return result
 
     def _run_inference(self):
         print(f"<FastGPTJInference._run_inference> start.")
