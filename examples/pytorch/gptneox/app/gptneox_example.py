@@ -9,9 +9,8 @@ import timeit
 import time
 import torch
 import numpy as np
-dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(dir_path + "/../../..")
-from examples.pytorch.gptneox.utils.gptneox import GPTNeox, GPTNeoxWeights
+
+from utils.gptneox import GPTNeox, GPTNeoxWeights
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
 

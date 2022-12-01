@@ -1,0 +1,1 @@
+mpirun -n 2 --allow-run-as-root python /workspace/Port_FasterTransformer/examples/pytorch/gptneox/app/serving_multi_gpu.py 

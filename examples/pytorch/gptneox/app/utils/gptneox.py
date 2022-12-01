@@ -158,7 +158,7 @@ class GPTNeoxWeights(object):
                   if is_load(i) else torch.empty(0).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
         else:
-            w.extend([torch.zeros(self.local_hidden_units).to(type_map[self.weights_data_type])
+            w.extend([torch.zeros(self.global_hidden_units).to(type_map[self.weights_data_type])
                   for i in range(self.layer_num)])
         
         w.extend([torch.from_numpy(np.fromfile(ckpt_path + "/model.layers.{}.mlp.dense_h_to_4h.weight.{}.bin"
