@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import torch
@@ -64,7 +65,7 @@ class FastGPTJTInference(FastInferenceInterface):
         #    print("{}: {}".format(arg, getattr(args, arg)))
         print("=========================================\n")
         
-        print(f"<FastGPTJTInference>: Group_name after super setting: <{self.group_name}>") 
+        print(f"<FastGPTJTInference>: Group_name after super setting: <{self.coordinator_join_request.group_name}>")
         
         self.tensor_para_size = 1
         self.pipeline_para_size = 1
@@ -176,7 +177,8 @@ class FastGPTJTInference(FastInferenceInterface):
                                     self.task_info["temperature"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.task_info["len_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                                    self.random_seed_tensor)
+                                    self.random_seed_tensor,
+                                    self.stream_token_pipe_w)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
         print(f"[INFO] GPTJ time costs: {time_elapsed} ms. ")
@@ -214,6 +216,7 @@ class FastGPTJTInference(FastInferenceInterface):
         
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('--together_model_name', type=str, default='Together-gpt-JT-6B-v1',
                         help='worker name for together coordinator.')
@@ -232,7 +235,7 @@ if __name__ == "__main__":
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
     
     coordinator = TogetherWeb3(
-        TogetherClientOptions(),
+        TogetherClientOptions(reconnect=True),
         http_url=f"http://{coord_url}:8094",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )

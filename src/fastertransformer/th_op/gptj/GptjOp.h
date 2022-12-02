@@ -28,7 +28,8 @@ public:
                         th::optional<th::Tensor> temperature_opt,
                         th::optional<th::Tensor> len_penalty_opt,
                         th::optional<th::Tensor> repetition_penalty_opt,
-                        th::optional<th::Tensor> random_seed_opt) = 0;
+                        th::optional<th::Tensor> random_seed_opt,
+                        th::optional<int64_t>    stream_tokens_pipe) = 0;
 };
 
 template<typename T>
@@ -178,7 +179,8 @@ public:
                 th::optional<th::Tensor> temperature_opt,
                 th::optional<th::Tensor> len_penalty_opt,
                 th::optional<th::Tensor> repetition_penalty_opt,
-                th::optional<th::Tensor> random_seed_opt) override
+                th::optional<th::Tensor> random_seed_opt,
+                th::optional<int64_t>    stream_tokens_pipe) override
    {
 #ifdef _DEBUG_PRINT_GPTJ
         std::cout << "IFGptj-forward: starts." << std::endl;
@@ -286,6 +288,9 @@ public:
                {"random_seed",
                 convert_tensor<unsigned long long int>(random_seed_opt.value(), ft::MemoryType::MEMORY_CPU)});
        }
+       if (stream_tokens_pipe.has_value()) {
+	   gptj.registerCallback(&FTGptj::stream_tokens_callback, nullptr);
+       }
 
        std::unordered_map<std::string, ft::Tensor> output_tensors = std::unordered_map<std::string, ft::Tensor>{
            {"output_ids",
@@ -353,6 +358,10 @@ private:
         int local_num_layer = (int)(ceil(layer_num_ * 1.0f / pipeline_para_size_));
         return l < layer_num_ && (l >= local_num_layer * pipeline_para_.rank_) && (l < local_num_layer * (pipeline_para_.rank_ + 1));
     }
+
+    static void stream_tokens_callback(std::unordered_map<std::string, ft::Tensor>*, void*) {
+        printf("got token callback y0y\n");
+    }
 };
 
 class GptjOp: public th::jit::CustomClassHolder {
@@ -381,7 +390,8 @@ public:
                               th::optional<th::Tensor> temperature_opt,
                               th::optional<th::Tensor> len_penalty_opt,
                               th::optional<th::Tensor> repetition_penalty_opt,
-                              th::optional<th::Tensor> random_seed_opt);
+                              th::optional<th::Tensor> random_seed_opt,
+                              th::optional<int64_t>    stream_tokens_pipe);
 
 private:
    const at::ScalarType    st_;
