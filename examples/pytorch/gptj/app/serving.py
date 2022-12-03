@@ -178,6 +178,7 @@ class FastGPTJTInference(FastInferenceInterface):
                                     self.task_info["len_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.random_seed_tensor,
+                                    self.served,
                                     self.stream_token_pipe_w)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time

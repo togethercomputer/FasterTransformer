@@ -29,6 +29,7 @@ public:
                         th::optional<th::Tensor> len_penalty_opt,
                         th::optional<th::Tensor> repetition_penalty_opt,
                         th::optional<th::Tensor> random_seed_opt,
+                        th::optional<int64_t>    request_id,
                         th::optional<int64_t>    stream_tokens_pipe) = 0;
 };
 
@@ -180,6 +181,7 @@ public:
                 th::optional<th::Tensor> len_penalty_opt,
                 th::optional<th::Tensor> repetition_penalty_opt,
                 th::optional<th::Tensor> random_seed_opt,
+                th::optional<int64_t>    request_id,
                 th::optional<int64_t>    stream_tokens_pipe) override
    {
 #ifdef _DEBUG_PRINT_GPTJ
@@ -288,8 +290,12 @@ public:
                {"random_seed",
                 convert_tensor<unsigned long long int>(random_seed_opt.value(), ft::MemoryType::MEMORY_CPU)});
        }
+       if (request_id.has_value()) {
+	   this->request_id_ = request_id.value();
+       }
        if (stream_tokens_pipe.has_value()) {
-	   gptj.registerCallback(&FTGptj::stream_tokens_callback, nullptr);
+	   this->stream_tokens_pipe_ = stream_tokens_pipe.value();
+           gptj.registerCallback(&FTGptj::stream_tokens_callback, this);
        }
 
        std::unordered_map<std::string, ft::Tensor> output_tensors = std::unordered_map<std::string, ft::Tensor>{
@@ -352,6 +358,9 @@ private:
    int                      world_size_ = 1;
    int                      rank_       = 0;
 
+   int64_t request_id_;
+   int stream_tokens_pipe_;
+
 
     bool isValidLayerParallelIndex(int l)
     {
@@ -359,8 +368,29 @@ private:
         return l < layer_num_ && (l >= local_num_layer * pipeline_para_.rank_) && (l < local_num_layer * (pipeline_para_.rank_ + 1));
     }
 
-    static void stream_tokens_callback(std::unordered_map<std::string, ft::Tensor>*, void*) {
-        printf("got token callback y0y\n");
+    static void stream_tokens_callback(std::unordered_map<std::string, ft::Tensor>* tensors, void *opaque) {
+        auto output_ids_iter = tensors->find("output_ids");
+        auto sequence_length_iter = tensors->find("sequence_length");
+        if (output_ids_iter == tensors->end()) return;
+        if (sequence_length_iter == tensors->end()) return;
+        auto &output_ids = output_ids_iter->second;
+        auto &sequence_length = sequence_length_iter->second;
+        // printf("output_ids size %ld, %ld\n", output_ids.size(), output_ids.sizeBytes());
+        // printf("output_ids shape %ld, %ld, %ld\n", output_ids.shape[0], output_ids.shape[1], output_ids.shape[2]);
+        int32_t *output_ids_cpu = (int32_t*)malloc(output_ids.sizeBytes());
+        int32_t *sequence_length_cpu = (int32_t*)malloc(sequence_length.sizeBytes());
+        cudaDeviceSynchronize();
+        cudaMemcpy(output_ids_cpu, output_ids.getPtr<int32_t>(), output_ids.sizeBytes(), cudaMemcpyDeviceToHost);
+        cudaMemcpy(sequence_length_cpu, sequence_length.getPtr<int32_t>(), sequence_length.sizeBytes(), cudaMemcpyDeviceToHost);
+        int32_t token = output_ids_cpu[sequence_length_cpu[0]-1];
+        free(output_ids_cpu);
+        free(sequence_length_cpu);
+
+	FTGptj *self = reinterpret_cast<FTGptj*>(opaque);
+	char buf[4096];
+	int len = snprintf(buf, sizeof(buf), "{ \"id\": %ld, \"token\": [ %d ] }\n", self->request_id_, token);
+        // printf("%d = write %d, \"%s\"\n", len, self->stream_tokens_pipe_, buf);
+	write(self->stream_tokens_pipe_, buf, len);
     }
 };
 
@@ -391,6 +421,7 @@ public:
                               th::optional<th::Tensor> len_penalty_opt,
                               th::optional<th::Tensor> repetition_penalty_opt,
                               th::optional<th::Tensor> random_seed_opt,
+                              th::optional<int64_t>    request_id,
                               th::optional<int64_t>    stream_tokens_pipe);
 
 private:
