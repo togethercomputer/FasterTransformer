@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import torch
@@ -109,6 +110,7 @@ class FastGPTNeoxTPInference(FastInferenceInterface):
         self.task_info["len_penalty"] = get_float(args.get("len_penalty", 0.0), default=0.0)
         self.task_info["repetition_penalty"] = get_float(args.get("repetition_penalty", 1.0), default=1.0)
         self.task_info["stop"] =  args.get("stop", [])
+        self.task_info["stream_tokens"] = args.get("stream_tokens", False)
         
         if len(self.task_info["prompt_seqs"][0]) == 0 or self.task_info["output_len"] == 0:
             inferenece_result = []
@@ -159,7 +161,9 @@ class FastGPTNeoxTPInference(FastInferenceInterface):
                                     self.task_info["temperature"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.task_info["len_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                                    self.random_seed_tensor)
+                                    self.random_seed_tensor,
+                                    self.served,
+                                    self.stream_tokens_pipe_w if self.task_info["stream_tokens"] else -1)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
         print("[INFO] GPTNeox-TP time costs: {:.2f} ms. <rank-{}>".format(time_elapsed * 1000, dist.get_rank()))
@@ -204,6 +208,7 @@ class FastGPTNeoxTPInference(FastInferenceInterface):
         
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('--together_model_name', type=str, default='Together-gpt-neox-20b-tp2',
                         help='worker name for together coordinator.')
@@ -223,7 +228,7 @@ if __name__ == "__main__":
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
     
     coordinator = TogetherWeb3(
-        TogetherClientOptions(),
+        TogetherClientOptions(reconnect=True),
         http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
@@ -234,7 +239,8 @@ if __name__ == "__main__":
         "worker_name": args.worker_name,
         "group_name": args.group_name,
         "tensor_para_size":args.tensor_para_size,
-        "max_batch_size":args.pipeline_para_size
+        "max_batch_size":args.pipeline_para_size,
+        "stream_tokens_pipe": True,
     })
     fip.start()
     

@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Dict
 import sys
@@ -104,6 +105,7 @@ class FastOPTInference(FastInferenceInterface):
         self.task_info["repetition_penalty"] = args.get("repetition_penalty", 1.0)
         self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         self.task_info["return_output_length"] = args.get("return_output_length", 0)
+        self.task_info["stream_tokens"] = args.get("stream_tokens", False)
         
         self._sync_task_info()
         result = self._run_inference()
@@ -136,7 +138,9 @@ class FastOPTInference(FastInferenceInterface):
                                     self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.random_seed_tensor,
                                     self.task_info["return_output_length"],
-                                    self.task_info["return_cum_log_probs"])
+                                    self.task_info["return_cum_log_probs"],
+                                    self.served,
+                                    self.stream_tokens_pipe_w if self.task_info["stream_tokens"] else -1)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
         print("[INFO] OPT time costs: {:.2f} ms. <rank-{}>".format(time_elapsed * 1000, dist.get_rank()))
@@ -180,9 +184,10 @@ class FastOPTInference(FastInferenceInterface):
         
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
     coordinator = TogetherWeb3(
-        TogetherClientOptions(),
+        TogetherClientOptions(reconnect=True),
         http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
@@ -190,6 +195,7 @@ if __name__ == "__main__":
         "coordinator": coordinator,
         "hf_model_name": "facebook/opt-66b",
         "tensor_para_size":8,
-        "max_batch_size":1
+        "max_batch_size":1,
+        "stream_tokens_pipe": True,
     })
     fip.start()
