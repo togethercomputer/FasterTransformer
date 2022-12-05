@@ -124,7 +124,8 @@ class FastGPTJTInference(FastInferenceInterface):
         self.task_info["temperature"] = get_float(args.get("temperature", 0.8), default=0.8)
         self.task_info["len_penalty"] = get_float(args.get("len_penalty", 0.0), default=0.0)
         self.task_info["repetition_penalty"] = get_float(args.get("repetition_penalty", 1.0), default=1.0)
-        self.task_info["stop"] =  args.get("stop", [])
+        self.task_info["stop"] = args.get("stop", [])
+        self.task_info["stream_tokens"] = args.get("stream_tokens", False)
         # self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         # self.task_info["return_output_length"] = args.get("return_output_length", 0)
         if len(self.task_info["prompt_seqs"][0]) == 0 or self.task_info["output_len"] == 0:
@@ -179,7 +180,7 @@ class FastGPTJTInference(FastInferenceInterface):
                                     self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.random_seed_tensor,
                                     self.served,
-                                    self.stream_token_pipe_w)
+                                    self.stream_tokens_pipe_w if self.task_info["stream_tokens"] else -1)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
         print(f"[INFO] GPTJ time costs: {time_elapsed} ms. ")
@@ -246,6 +247,7 @@ if __name__ == "__main__":
         "ckpt_path":args.ckpt_path,
         "worker_name": args.worker_name,
         "group_name": args.group_name,
+        "stream_tokens_pipe": True,
         "tensor_para_size":1,
         "max_batch_size":1
     })
