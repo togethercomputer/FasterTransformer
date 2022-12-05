@@ -3,7 +3,9 @@ import sys
 import torch
 import timeit
 from typing import Dict
-from together_worker.fast_inference import FastInferenceInterface
+# Todo: change this back after pip update:
+# from together_worker.fast_inference import FastInferenceInterface 
+from utils.fast_inference import FastInferenceInterface 
 from together_web3.computer import RequestTypeLanguageModelInference
 from together_web3.together import TogetherWeb3, TogetherClientOptions
 from transformers import AutoTokenizer, AutoConfig
@@ -23,18 +25,19 @@ class FastGPTNeoxTPInference(FastInferenceInterface):
             print("[INFO] WARNING: Have initialized the process group")
             
         args['worker_name'] = 'worker'+str(dist.get_rank())
+        args['workers'] = dist.get_world_size()
+        args['rank'] = dist.get_rank()
+                
         super().__init__(model_name, args if args is not None else {})
         
-        print(f"<FastGPTNeoxInference>-MPI rank<{dist.get_rank()}>: Group_name after super setting: <{self.group_name}>") 
-        print(f"<FastGPTNeoxInference>-MPI rank<{dist.get_rank()}>: Group_name after super setting: <{self.worker_name}>") 
+        print(f"<FastGPTNeoxInference>-MPI rank<{dist.get_rank()} ({self.rank})>: group_name after super setting: <{self.coordinator_join_request.group_name}>") 
+        print(f"<FastGPTNeoxInference>-MPI rank<{dist.get_rank()} ({self.rank})>: worker_name after super setting: <{self.coordinator_join_request.worker_name}>") 
         print("\n=============== Arguments ===============")
         print(args.keys())
         print(args)
         #for key in args.keys():
         #    print("{}: {}".format(arg, getattr(args, arg)))
         print("=========================================\n")
-        
-        print(f"<FastGPTNeoxTPInference>: Group_name after super setting: <{self.group_name}>") 
         
         self.tensor_para_size = args['tensor_para_size']
         self.pipeline_para_size = 1
@@ -194,6 +197,7 @@ class FastGPTNeoxTPInference(FastInferenceInterface):
             return None
         
     def worker(self):
+        print(f"<FastGPTNeoxTPInference._run_inference> enter rank-{self.rank}")
         while True:
             self._sync_task_info()
             self._run_inference()
