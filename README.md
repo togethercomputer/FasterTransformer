@@ -1,6 +1,6 @@
-docker build -t port_fasttransformer .
+docker build -t port_ft_gpt_jt -f GPT-JT-Dockerfile 
 
-nvidia-docker run  --ipc=host --network=host --name port_ft -ti -v /root/fm/models/ft_model:/workspace/Port_FasterTransformer/build/model -v  /root/fm/dev/Port_FasterTransformer/examples/:/workspace/Port_FasterTransformer/examples -v  /root/fm/dev/Port_FasterTransformer/src/fastertransformer:/workspace/Port_FasterTransformer/src/fastertransformer  port_fasttransformer  bash
+nvidia-docker run  --ipc=host --network=host --name port_ft -ti -v /root/fm/models/ft_model:/workspace/Port_FasterTransformer/build/model -v  /root/fm/dev/Port_FasterTransformer/examples/:/workspace/Port_FasterTransformer/examples -v  /root/fm/dev/Port_FasterTransformer/src/fastertransformer:/workspace/Port_FasterTransformer/src/fastertransformer  port_ft  bash
 
 nvidia-docker run  --ipc=host --network=host --name port_ft -ti -v /home/binhang/active/ft_model:/workspace/Port_FasterTransformer/build/model -v  /home/binhang/active/Port_FasterTransformer/examples:/workspace/Port_FasterTransformer/examples -v  /home/binhang/active/Port_FasterTransformer/src/fastertransformer:/workspace/Port_FasterTransformer/src/fastertransformer  port_fasttransformer bash
 
