@@ -9,9 +9,8 @@ import torch
 import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
 
-dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(dir_path + "/../../..")
-from examples.pytorch.gpt.utils.parallel_gpt import ParallelGPT
+from utils.fast_inference import FastInferenceInterface
+from utils.gpt import GPT
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
 
@@ -67,7 +66,7 @@ class FastOPTInference(FastInferenceInterface):
         torch.manual_seed(0)
         with torch.no_grad():
             # Prepare model.
-            self.opt_model = ParallelGPT(head_num, size_per_head, vocab_size, start_id, self.end_id, layer_num,
+            self.opt_model = GPT(head_num, size_per_head, vocab_size, start_id, self.end_id, layer_num,
                                          max_seq_len, self.tensor_para_size, self.pipeline_para_size, lib_path,
                                          layernorm_eps, layernorm_type, activation_type, has_post_decoder_layernorm,
                                          int8_mode=0, weights_data_type='fp16')
@@ -75,19 +74,7 @@ class FastOPTInference(FastInferenceInterface):
                 print("[WARNING] Checkpoint file not found. Model loading is skipped.")
                 
         print(f"<FastOPTInference.__init__> rank {dist.get_rank()} initialization done")
-
-    def _sync_task_info(self):
-        print(f"<FastOPTInference._sync_task_info> enter rank-<{dist.get_rank()}>")
-        dist.barrier()
-        if dist.get_rank() == 0:
-            dist.broadcast_object_list([self.task_info], src=0)
-        else:
-            info = [None]
-            torch.distributed.broadcast_object_list(info, src=0)
-            self.task_info = info[0]
-        dist.barrier()
-        print(f"<FastOPTInference._sync_task_info> leave rank-<{dist.get_rank()}, task_info:{self.task_info}>")
-        
+    
     def dispatch_request(self, args, env) -> Dict:
         print(f"Rank {dist.get_rank()} get {args}")
         args = args[0]
@@ -105,7 +92,6 @@ class FastOPTInference(FastInferenceInterface):
         self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         self.task_info["return_output_length"] = args.get("return_output_length", 0)
         
-        self._sync_task_info()
         result = self._run_inference()
         print(f"<FastOPTInference.dispatch_request> return: {result}")
         return result
@@ -141,42 +127,34 @@ class FastOPTInference(FastInferenceInterface):
             time_elapsed = timeit.default_timer() - time
         print("[INFO] OPT time costs: {:.2f} ms. <rank-{}>".format(time_elapsed * 1000, dist.get_rank()))
         
-        if dist.get_rank() == 0:
-            assert tokens_batch is not None
-        
-            if self.task_info["return_cum_log_probs"] > 0:
-                tokens_batch, _, cum_log_probs = tokens_batch
-                print('[INFO] Log probs of sentences:', cum_log_probs)
+        assert tokens_batch is not None
+    
+        if self.task_info["return_cum_log_probs"] > 0:
+            tokens_batch, _, cum_log_probs = tokens_batch
+            print('[INFO] Log probs of sentences:', cum_log_probs)
 
-            inferenece_result = []
-            tokens_batch = tokens_batch.cpu().numpy()
-            
-            for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
-                item = {'choices': [], }
-                for beam_id in range(self.task_info["beam_width"]):
-                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    output = self.tokenizer.decode(token)
-                    print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
-                    choice = {
-                        "text": output,
-                        "index": beam_id,
-                        "finish_reason": "length"
-                    }
-                item['choices'].append(choice)
-                inferenece_result.append(item)
-            #  So far coordinator does not support batch. 
-            return {
-                "result_type": RequestTypeLanguageModelInference,
-                "choices": inferenece_result[0]['choices'],
-                "raw_compute_time": time_elapsed
-            }
-        else:
-            return None
+        inferenece_result = []
+        tokens_batch = tokens_batch.cpu().numpy()
         
-    def worker(self):
-        while True:
-            self._sync_task_info()
-            self._run_inference()
+        for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
+            item = {'choices': [], }
+            for beam_id in range(self.task_info["beam_width"]):
+                token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                output = self.tokenizer.decode(token)
+                print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
+                choice = {
+                    "text": output,
+                    "index": beam_id,
+                    "finish_reason": "length"
+                }
+            item['choices'].append(choice)
+            inferenece_result.append(item)
+        #  So far coordinator does not support batch. 
+        return {
+            "result_type": RequestTypeLanguageModelInference,
+            "choices": inferenece_result[0]['choices'],
+            "raw_compute_time": time_elapsed
+        }
         
 
 if __name__ == "__main__":
@@ -186,9 +164,9 @@ if __name__ == "__main__":
         http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
-    fip = FastOPTInference(model_name="opt66b", args={
+    fip = FastOPTInference(model_name="opt2.7b", args={
         "coordinator": coordinator,
-        "hf_model_name": "facebook/opt-66b",
+        "hf_model_name": "facebook/opt-2.7b",
         "tensor_para_size":8,
         "max_batch_size":1
     })
