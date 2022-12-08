@@ -57,6 +57,7 @@ def post_processing_text(output_text, stop_tokens):
 class FastGPTJTInference(FastInferenceInterface):
     def __init__(self, model_name: str, args=None) -> None:
         super().__init__(model_name, args if args is not None else {})
+        print(f"Model name: {model_name}")
         print("\n=============== Arguments ===============")
         print(args.keys())
         print(args)
@@ -64,7 +65,7 @@ class FastGPTJTInference(FastInferenceInterface):
         #    print("{}: {}".format(arg, getattr(args, arg)))
         print("=========================================\n")
         
-        print(f"<FastGPTJTInference>: Group_name after super setting: <{self.group_name}>") 
+        # print(f"<FastGPTJTInference>: Group_name after super setting: <{self.group_name}>") 
         
         self.tensor_para_size = 1
         self.pipeline_para_size = 1
@@ -233,7 +234,7 @@ if __name__ == "__main__":
     
     coordinator = TogetherWeb3(
         TogetherClientOptions(),
-        http_url=f"http://{coord_url}:8094",
+        http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
     fip = FastGPTJTInference(model_name=args.together_model_name, args={

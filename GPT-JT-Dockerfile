@@ -13,7 +13,7 @@ RUN mkdir -p build && \
     pip install -r ../examples/pytorch/gpt/common/requirement.txt && \
     pip install -r ../examples/pytorch/gptj/app/requirements.txt
 
-COPY --from=node /usr/local/bin/together /usr/local/bin/
-COPY app app
-COPY serve.sh serve.sh
-COPY local-cfg.yaml .together/cfg.yaml
+# COPY --from=node /usr/local/bin/together /usr/local/bin/
+# COPY app app
+# COPY serve.sh serve.sh
+# COPY local-cfg.yaml .together/cfg.yaml

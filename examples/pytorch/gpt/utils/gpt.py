@@ -352,13 +352,30 @@ class GPT(nn.Module):
         self.pipeline_para_rank = self.rank // self.tensor_para_size
 
         # Create and copy model to the device.
-        self.cuda()
+        # self.cuda()
 
     def load(self, ckpt_path):
         is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
                                     pipeline_para_rank=self.pipeline_para_rank)
         self.cuda()
         return is_load
+    
+    def load_w_type(self, ckpt_path, infer_data_type):
+        print(f"<GPT>:load: load weight starts.")
+        start_time = time.time()
+        is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
+                                    pipeline_para_rank=self.pipeline_para_rank)
+        if infer_data_type == 'fp16':
+            self.weights._map(lambda w: w.half())
+        elif infer_data_type == 'bfp16':
+            self.weights._map(lambda w: w.bfloat16())
+        
+        print("<GPT>:load: call self.cuda()")
+        self.cuda()
+        end_time = time.time()
+        print(f"<GPT>:load: load weight ends. Loading takes {end_time - start_time} seconds.")
+        return is_load
+    
 
     def half(self):
         self.weights._map(lambda w: w.half())

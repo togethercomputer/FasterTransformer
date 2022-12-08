@@ -1,28 +1,9 @@
-# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-'''
-Convert huggingface Meta OPT model. Use https://huggingface.co/facebook/opt-125m as demo.
-'''
-
 import argparse
 import configparser
 import multiprocessing
 import numpy as np
 from pathlib import Path
 import torch
-
 import os
 import sys
 from datetime import datetime
@@ -44,6 +25,21 @@ def fuse_qkv_weight(q, k, v):
     return qkv
 
 
+def convert_lm_head(saved_dir, model_dict):
+    save_path_prefix = saved_dir + "/model."
+    model_dict['final_layer_norm.bias'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix+'final_layernorm.bias.bin')
+    model_dict['final_layer_norm.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix+'final_layernorm.weight.bin')
+    model_dict['lm_head.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix+'lm_head.weight.bin')
+    
+def convert_embs(saved_dir, model_dict):
+    save_path_prefix = saved_dir + "/model."
+    model_dict['embed_positions.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix+'wpe.bin')
+    
+
 def split_and_convert_layer(layer_index, saved_dir, partition_num, model_dict):
     print(f"<split_and_convert_layer>: handle layer: {layer_index}")
     save_path_prefix = saved_dir + "/model.layers." + str(layer_index) + "."
@@ -59,36 +55,40 @@ def split_and_convert_layer(layer_index, saved_dir, partition_num, model_dict):
     qkv_bias = fuse_qkv_weight(q_bias, k_bias, v_bias)
 
     # the parameter that does not need to be partitioned:
-    model_dict['self_attn_layer_norm.bias'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix+'input_layernorm.bias')
-    model_dict['self_attn_layer_norm.weight'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'input_layernorm.weight')
-    model_dict['final_layer_norm.bias'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'post_attention_layernorm.bias')
-    model_dict['final_layer_norm.weight'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'post_attention_layernorm.weight')
-    qkv_bias.detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'attention.query_key_value.bias')
-    model_dict['self_attn.out_proj.bias'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'attention.dense.bias')
-    model_dict['fc1.bias'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'mlp.dense_h_to_4h.bias')
-    model_dict['fc2.bias'].detach().cpu().numpy().astype(torch.float16).tofile(
-        save_path_prefix + 'mlp.dense_4h_to_h.bias')
+    model_dict['self_attn_layer_norm.bias'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix+'input_layernorm.bias.bin')
+    model_dict['self_attn_layer_norm.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix + 'input_layernorm.weight.bin')
+    model_dict['final_layer_norm.bias'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix + 'post_attention_layernorm.bias.bin')
+    model_dict['final_layer_norm.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix + 'post_attention_layernorm.weight.bin')
+    model_dict['self_attn.out_proj.bias'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix + 'attention.dense.bias.bin')
+    model_dict['fc2.bias'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix + 'mlp.dense_4h_to_h.bias.bin')
 
     # the parameter that need to be partitioned:
-    split_qkv_weights = np.split(qkv_weight.detach().cpu().numpy().astype(torch.float16), partition_num)
+    split_qkv_weights = np.split(qkv_weight.detach().cpu().numpy().astype(np.float16), partition_num)
     for i in range(partition_num):
         split_qkv_weights[i].tofile(save_path_prefix+'attention.query_key_value.weight' + f".{i}.bin")
-    split_out_weights = np.split(model_dict['self_attn.out_proj.weight'].detach().cpu().numpy().astype(torch.float16),
+    split_qkv_bias = np.split(qkv_bias.detach().cpu().numpy().astype(np.float16), partition_num)
+    for i in range(partition_num):
+        split_qkv_bias[i].tofile(save_path_prefix+'attention.query_key_value.bias' + f".{i}.bin")
+        
+    split_out_weights = np.split(model_dict['self_attn.out_proj.weight'].detach().cpu().numpy().astype(np.float16), 
                                  partition_num)
     for i in range(partition_num):
         split_out_weights[i].tofile(save_path_prefix+'attention.dense.weight' + f".{i}.bin")
-    split_fc1_weights = np.split(model_dict['fc1.weight'].detach().cpu().numpy().astype(torch.float16),
-                                 partition_num)
+        
+    split_fc1_weights = np.split(model_dict['fc1.weight'].detach().cpu().numpy().astype(np.float16), partition_num)
     for i in range(partition_num):
         split_fc1_weights[i].tofile(save_path_prefix+'mlp.dense_h_to_4h.weight' + f".{i}.bin")
-    split_fc2_weights = np.split(model_dict['fc2.weight'].detach().cpu().numpy().astype(torch.float16),
+    split_fc1_bias = np.split(model_dict['fc1.bias'].detach().cpu().numpy().astype(np.float16), partition_num)
+    for i in range(partition_num):
+        split_fc1_bias[i].tofile(save_path_prefix+'mlp.dense_h_to_4h.bias' + f".{i}.bin")
+    
+    split_fc2_weights = np.split(model_dict['fc2.weight'].detach().cpu().numpy().astype(np.float16),
                                  partition_num)
     for i in range(partition_num):
         split_fc2_weights[i].tofile(save_path_prefix + 'mlp.dense_4h_to_h.weight' + f".{i}.bin")
@@ -96,9 +96,11 @@ def split_and_convert_layer(layer_index, saved_dir, partition_num, model_dict):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('--saved_dir', '-o', type=str, help='file name of output file', required=True)
-    parser.add_argument('--in_file', '-i', type=str, help='file name of input checkpoint file', required=True)
-    parser.add_argument('--layer_index', '-l_i', type=int, help='file name of output file', default=1)
+    parser.add_argument('--saved_dir', '-o', type=str, help='file name of output file', 
+                        default="/workspace/Port_FasterTransformer/build/model/opt-175b-tp8/8-gpu")
+    parser.add_argument('--in_dir', '-i', type=str, help='file name of input checkpoint file', 
+                        default="/workspace/Port_FasterTransformer/build/model/opt-175b-new/")
+    parser.add_argument('--layer_index', '-l_i', type=int, help='file name of output file', default=0)
     parser.add_argument('--partition_num', '-t_g', type=int, help='How many gpus for inference', default=8)
     args = parser.parse_args()
     print("\n=============== Argument ===============")
@@ -106,9 +108,28 @@ if __name__ == "__main__":
         print(f"{key}: {vars(args)[key]}")
     print("========================================")
 
+
     start_time = datetime.now()
-    model_dict = torch.load(args.in_file)
-    split_and_convert_layer(args.layer_index, args.saved_dir, args.partition_num, model_dict)
+    
+    
+    print("---------------- lm_head modules ------------------")
+    lm_dict = torch.load(args.in_dir+'pytorch_lm_head.pt')
+    for layer_name in lm_dict:
+        print(f"{layer_name}: {lm_dict[layer_name].shape}")
+    convert_lm_head(args.saved_dir, lm_dict)
+    
+    print("---------------- embs modules ------------------")
+    embs_dict = torch.load(args.in_dir+'pytorch_embs.pt')
+    for layer_name in embs_dict:
+        print(f"{layer_name}: {embs_dict[layer_name].shape}")
+    convert_embs(args.saved_dir, embs_dict)
+
+    for i in range(96):
+        print(f"---------------- layer modules <{i}> ------------------")
+        layer_dict = torch.load(args.in_dir+'pytorch_'+ str(i) + '.pt')
+        for layer_name in layer_dict:
+            print(f"{layer_name}: {layer_dict[layer_name].shape}")
+        split_and_convert_layer(i, args.saved_dir, args.partition_num, layer_dict)
     stop_time = datetime.now()
     run_time = (stop_time - start_time)
     print(f"[INFO] Spend {run_time} (h:m:s) to convert the model")
