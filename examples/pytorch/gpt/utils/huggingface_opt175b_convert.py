@@ -36,9 +36,10 @@ def convert_lm_head(saved_dir, model_dict):
     
 def convert_embs(saved_dir, model_dict):
     save_path_prefix = saved_dir + "/model."
+    model_dict['embed_tokens.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+        save_path_prefix+'wte.bin')
     model_dict['embed_positions.weight'].detach().cpu().numpy().astype(np.float16).tofile(
         save_path_prefix+'wpe.bin')
-    
 
 def split_and_convert_layer(layer_index, saved_dir, partition_num, model_dict):
     print(f"<split_and_convert_layer>: handle layer: {layer_index}")
@@ -130,6 +131,7 @@ if __name__ == "__main__":
         for layer_name in layer_dict:
             print(f"{layer_name}: {layer_dict[layer_name].shape}")
         split_and_convert_layer(i, args.saved_dir, args.partition_num, layer_dict)
+    
     stop_time = datetime.now()
     run_time = (stop_time - start_time)
     print(f"[INFO] Spend {run_time} (h:m:s) to convert the model")
