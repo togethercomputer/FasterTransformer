@@ -112,12 +112,14 @@ def main():
         layer_num = 96
         max_seq_len = 2050
         size_per_head = 128
+        tokenizer = AutoTokenizer.from_pretrained('facebook/opt-66b')
     else:
         hf_config = vars(AutoConfig.from_pretrained(args.hf_model_name))
         head_num = hf_config['num_attention_heads']
         layer_num = hf_config['num_hidden_layers']
         max_seq_len = hf_config['max_position_embeddings']
         size_per_head = hf_config['hidden_size'] // head_num
+        tokenizer = AutoTokenizer.from_pretrained(args.hf_model_name)
     
     start_id = hf_config['bos_token_id']
     end_id = hf_config['eos_token_id']  
@@ -127,7 +129,7 @@ def main():
     activation_type = 'Relu' if hf_config['activation_function'] == 'relu' else 'Gelu'
     has_post_decoder_layernorm = layernorm_type == 'pre_layernorm'
     lib_path = '/workspace/Port_FasterTransformer/build/lib/libth_parallel_gpt.so'
-    tokenizer = AutoTokenizer.from_pretrained(args.hf_model_name)
+    
     tokenizer.pad_token = tokenizer.eos_token
 
     output_len = args.output_len
@@ -205,9 +207,10 @@ def main():
             
             for output_len in [32, 64, 128]:
                 print("========================= opt-input-data: =======================")
-                print(f"start_ids: {start_ids.shape}")
-                print(f"start_lengths: {start_lengths.shape}")
-                print(f"output_len: {output_len}")
+                # print(f"start_ids: {start_ids.shape}")
+                # print(f"start_lengths: {start_lengths.shape}")
+                # print(f"output_len: {output_len}")
+                
                 tokens_batch = gpt(start_ids,
                                 start_lengths,
                                 output_len,

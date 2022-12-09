@@ -70,27 +70,27 @@ def split_and_convert_layer(layer_index, saved_dir, partition_num, model_dict):
         save_path_prefix + 'mlp.dense_4h_to_h.bias.bin')
 
     # the parameter that need to be partitioned:
-    split_qkv_weights = np.split(qkv_weight.detach().cpu().numpy().astype(np.float16), partition_num)
+    split_qkv_weights = np.split(qkv_weight.detach().cpu().numpy().astype(np.float16), partition_num, axis=-1)
     for i in range(partition_num):
         split_qkv_weights[i].tofile(save_path_prefix+'attention.query_key_value.weight' + f".{i}.bin")
-    split_qkv_bias = np.split(qkv_bias.detach().cpu().numpy().astype(np.float16), partition_num)
+    split_qkv_bias = np.split(qkv_bias.detach().cpu().numpy().astype(np.float16), partition_num, axis=-1)
     for i in range(partition_num):
         split_qkv_bias[i].tofile(save_path_prefix+'attention.query_key_value.bias' + f".{i}.bin")
         
     split_out_weights = np.split(model_dict['self_attn.out_proj.weight'].detach().cpu().numpy().astype(np.float16), 
-                                 partition_num)
+                                 partition_num, axis=0)
     for i in range(partition_num):
         split_out_weights[i].tofile(save_path_prefix+'attention.dense.weight' + f".{i}.bin")
         
-    split_fc1_weights = np.split(model_dict['fc1.weight'].detach().cpu().numpy().astype(np.float16), partition_num)
+    split_fc1_weights = np.split(model_dict['fc1.weight'].detach().cpu().numpy().astype(np.float16), partition_num, axis=-1)
     for i in range(partition_num):
         split_fc1_weights[i].tofile(save_path_prefix+'mlp.dense_h_to_4h.weight' + f".{i}.bin")
-    split_fc1_bias = np.split(model_dict['fc1.bias'].detach().cpu().numpy().astype(np.float16), partition_num)
+    split_fc1_bias = np.split(model_dict['fc1.bias'].detach().cpu().numpy().astype(np.float16), partition_num, axis=-1)
     for i in range(partition_num):
         split_fc1_bias[i].tofile(save_path_prefix+'mlp.dense_h_to_4h.bias' + f".{i}.bin")
     
     split_fc2_weights = np.split(model_dict['fc2.weight'].detach().cpu().numpy().astype(np.float16),
-                                 partition_num)
+                                 partition_num, axis=0)
     for i in range(partition_num):
         split_fc2_weights[i].tofile(save_path_prefix + 'mlp.dense_4h_to_h.weight' + f".{i}.bin")
 
