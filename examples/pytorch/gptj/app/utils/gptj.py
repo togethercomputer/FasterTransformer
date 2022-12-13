@@ -203,7 +203,8 @@ class GPTJ(nn.Module):
                  max_seq_len,
                  tensor_para_size, pipeline_para_size,
                  lib_path,
-                 weights_data_type: np.dtype = np.float16):
+                 weights_data_type: np.dtype = np.float16,
+                 device_index = None):
         super().__init__()
         self.head_num = head_num
         self.size_per_head = size_per_head
@@ -247,7 +248,7 @@ class GPTJ(nn.Module):
             print("[INFO] WARNING: Have initialized the process group")
         self.rank = dist.get_rank()
         self.device_count = torch.cuda.device_count()
-        self.device = self.rank % self.device_count
+        self.device = device_index if device_index is not None else self.rank % self.device_count
         torch.cuda.set_device(self.device)
 
         world_size = dist.get_world_size()

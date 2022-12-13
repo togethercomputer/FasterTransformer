@@ -1,0 +1,14 @@
+# Copy to ~/.together/cfg.yaml (on host), then run: together start
+worker:
+  mode: docker-service
+  image: togethercomputer/fastertransformer
+  model_url: https://together-modelhub.s3.us-west-2.amazonaws.com/GPT-JT-6B-v1-tp1
+  group:
+    alloc: each
+  gpu:
+    type: cuda
+    alloc: all
+  network:
+    mode: host
+  command: ./serve.sh
+  env: NUM_WORKERS=1
