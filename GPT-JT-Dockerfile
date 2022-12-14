@@ -13,8 +13,8 @@ FROM nvcr.io/nvidia/pytorch:22.04-py3
 WORKDIR /workspace/Port_FasterTransformer
 COPY --from=builder /workspace/Port_FasterTransformer/build/lib /workspace/Port_FasterTransformer/build/lib 
 COPY --from=node /usr/local/bin/together /usr/local/bin/
+COPY local-cfg.yaml /root/.together/cfg.yaml
 COPY examples examples
-COPY local-cfg.yaml .together/cfg.yaml
 COPY serve.sh serve.sh
 RUN pip install -r ./examples/pytorch/gpt/requirement.txt && \
     pip install -r ./examples/pytorch/gpt/common/requirement.txt && \

@@ -9,7 +9,7 @@ docker run --rm --gpus all \
   -e NUM_WORKERS=auto \
   -v $PWD/models:/together/together_models \
   -v $PWD/.together:/home/user/.together/together \
-  -it togethercomputer/fastertransformer /usr/local/bin/together start
+  -it togethercomputer/fastertransformer /usr/local/bin/together start --color
 ```
 
 # Development commands
