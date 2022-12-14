@@ -1,18 +1,3 @@
-# Copyright (c) 2021-2022, NVIDIA CORPORATION.  All rights reserved.
-# Copyright (c) 2021, NAVER Corp.  Authored by CLOVA.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from __future__ import print_function
 
 from torch.nn.utils.rnn import pad_sequence
@@ -110,7 +95,7 @@ def main():
         hf_config = vars(AutoConfig.from_pretrained('facebook/opt-66b'))
         head_num = 96
         layer_num = 96
-        max_seq_len = 2050
+        max_seq_len = 2048
         size_per_head = 128
         tokenizer = AutoTokenizer.from_pretrained('facebook/opt-66b')
     else:
@@ -188,6 +173,7 @@ def main():
     with torch.no_grad():
         # Generate tokens.
         # Inputs
+        # for batch_size in [1, 16]:
         for batch_size in [1, 16]:
             contexts = []
             if args.sample_input_file:  # conditional case
@@ -205,7 +191,8 @@ def main():
             else:
                 random_seed_tensor = torch.zeros([batch_size], dtype=torch.int64)
             
-            for output_len in [32, 64, 128]:
+            # for output_len in [32, 64, 128]:
+            for output_len in [1, 32, 64, 128]:
                 print("========================= opt-input-data: =======================")
                 # print(f"start_ids: {start_ids.shape}")
                 # print(f"start_lengths: {start_lengths.shape}")

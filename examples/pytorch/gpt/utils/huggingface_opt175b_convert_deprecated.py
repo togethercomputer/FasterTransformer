@@ -38,7 +38,8 @@ def convert_embs(saved_dir, model_dict):
     save_path_prefix = saved_dir + "/model."
     model_dict['embed_tokens.weight'].detach().cpu().numpy().astype(np.float16).tofile(
         save_path_prefix+'wte.bin')
-    model_dict['embed_positions.weight'].detach().cpu().numpy().astype(np.float16).tofile(
+    padding_offset = 2
+    model_dict['embed_positions.weight'][padding_offset:,...].detach().cpu().numpy().astype(np.float16).tofile(
         save_path_prefix+'wpe.bin')
 
 def split_and_convert_layer(layer_index, saved_dir, partition_num, model_dict):
@@ -109,10 +110,8 @@ if __name__ == "__main__":
         print(f"{key}: {vars(args)[key]}")
     print("========================================")
 
-
     start_time = datetime.now()
-    
-    
+        
     print("---------------- lm_head modules ------------------")
     lm_dict = torch.load(args.in_dir+'pytorch_lm_head.pt')
     for layer_name in lm_dict:
@@ -129,6 +128,9 @@ if __name__ == "__main__":
         print(f"---------------- layer modules <{i}> ------------------")
         layer_dict = torch.load(args.in_dir+'pytorch_'+ str(i) + '.pt')
         for layer_name in layer_dict:
+            print(f"{layer_name}: {layer_dict[layer_name].shape}")
+            param = layer_dict[layer_name]
+            layer_dict[layer_name] = param.permute(1, 0) if len(param.shape) == 2 else param
             print(f"{layer_name}: {layer_dict[layer_name].shape}")
         split_and_convert_layer(i, args.saved_dir, args.partition_num, layer_dict)
     
