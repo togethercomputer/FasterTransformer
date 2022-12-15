@@ -352,13 +352,30 @@ class GPT(nn.Module):
         self.pipeline_para_rank = self.rank // self.tensor_para_size
 
         # Create and copy model to the device.
-        self.cuda()
+        # self.cuda()
 
     def load(self, ckpt_path):
         is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
                                     pipeline_para_rank=self.pipeline_para_rank)
         self.cuda()
         return is_load
+    
+    def load_w_type(self, ckpt_path, infer_data_type):
+        print(f"<GPT>:load: load weight starts.")
+        start_time = time.time()
+        is_load = self.weights.load(ckpt_path, tensor_para_rank=self.tensor_para_rank,
+                                    pipeline_para_rank=self.pipeline_para_rank)
+        if infer_data_type == 'fp16':
+            self.weights._map(lambda w: w.half())
+        elif infer_data_type == 'bfp16':
+            self.weights._map(lambda w: w.bfloat16())
+        
+        print("<GPT>:load: call self.cuda()")
+        self.cuda()
+        end_time = time.time()
+        print(f"<GPT>:load: load weight ends. Loading takes {end_time - start_time} seconds.")
+        return is_load
+    
 
     def half(self):
         self.weights._map(lambda w: w.half())
@@ -610,3 +627,35 @@ class GptModelConfig:
             start_id=bos_id,
             end_id=eos_id,
         )
+
+
+class ParallelGPT(GPT):
+    def __init__(self, head_num, size_per_head, vocab_size, start_id, end_id, layer_num, max_seq_len,
+                 tensor_para_size, pipeline_para_size, lib_path,
+                 layernorm_eps = 1e-6, layernorm_type = "pre_layernorm", # gpt_variant_params
+                 activation_type = "Gelu", has_post_decoder_layernorm = True, # gpt variant params
+                 has_adapters = False, adapter_inter_size = 0, # gpt variant params
+				 int8_mode = 0,
+                 weights_data_type: np.dtype = np.float32,
+                 shared_contexts_ratio=1.0):
+        super().__init__(head_num, size_per_head, vocab_size, start_id, end_id, layer_num, max_seq_len,
+                         tensor_para_size, pipeline_para_size, lib_path,
+                         layernorm_eps, layernorm_type, activation_type, has_post_decoder_layernorm,
+                         has_adapters, adapter_inter_size,
+                         int8_mode, weights_data_type, shared_contexts_ratio)
+
+    def cuda(self):
+        self.weights._map(lambda w: w.cuda(self.device))
+        if self.int8_mode != 0:
+            self.weights._map_int8(lambda w: w.cuda(self.device))
+
+        if self.build_model == True:
+            del self.model
+            self.build_model = False
+        self.model = torch.classes.FasterTransformer.ParallelGptOp(self.head_num, self.size_per_head, 4 * self.head_num * self.size_per_head,
+                                                                   self.layer_num, self.vocab_size, self.start_id, self.end_id,
+                                                                   self.tensor_para_size, self.pipeline_para_size, self.int8_mode,
+                                                                   self.layernorm_eps, self.layernorm_type, self.activation_type, self.has_post_decoder_layernorm,
+                                                                   self.has_adapters, self.adapter_inter_size, # gpt_variant_params
+                                                                   self.weights.w, self.weights.int8_w, self.weights.scale, self.shared_contexts_ratio)
+        self.build_model = True

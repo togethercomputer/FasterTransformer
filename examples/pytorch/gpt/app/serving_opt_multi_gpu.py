@@ -1,17 +1,62 @@
 import os
 from typing import Dict
-import sys
+import argparse
 import timeit
-from common.fast_inference import FastInferenceInterface
-from common.together_web3.computer import RequestTypeLanguageModelInference
-from common.together_web3.together import TogetherWeb3, TogetherClientOptions
+import logging
+# from common.fast_inference import FastInferenceInterface
+# from common.together_web3.computer import RequestTypeLanguageModelInference
+# from common.together_web3.together import TogetherWeb3, TogetherClientOptions
+# from utils.fast_inference import FastInferenceInterface
+from together_worker.fast_inference import FastInferenceInterface
+from together_web3.computer import RequestTypeLanguageModelInference
+from together_web3.together import TogetherWeb3, TogetherClientOptions
 import torch
 import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
-
-from utils.fast_inference import FastInferenceInterface
-from utils.parallel_gpt import ParallelGPT
+from utils.gpt import ParallelGPT
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+
+
+def get_int(input_: str, default=0) -> int:
+    try:
+        my_num = int(input_)
+        return my_num
+    except ValueError:
+        print(f'Invalid int {input_} set to default: {default}')
+        return default
+
+
+def get_float(input_: str, default=0.0) -> float:
+    try:
+        my_num = float(input_)
+        return my_num
+    except ValueError:
+        print(f'Invalid float {input_} set to default: {default}')
+        return default
+
+
+def post_processing_text(output_text, stop_tokens):
+    print(f"<post_processing_text> output_text: {output_text}")
+
+    filtered_stop_tokens = []
+    for token in stop_tokens:
+        if token != '':
+            filtered_stop_tokens.append(token)
+            
+    print(f"<post_processing_text> stop_tokens: {filtered_stop_tokens}.")
+
+    end_pos = len(output_text)
+    print(f"<post_processing_text>1 end_pos: {end_pos}.")
+    for stop_token in filtered_stop_tokens:
+        if output_text.find(stop_token) != -1:
+            end_pos = min(output_text.find(stop_token), end_pos)
+
+    print(f"<post_processing_text>2 end_pos: {end_pos}.")
+    print(f"<post_processing_text> text: {output_text}, end_pos: {end_pos}")
+    post_processed_text = output_text[:end_pos]
+    print(f"<post_processing_text> input: {output_text}")
+    print(f"<post_processing_text> output: {post_processed_text}")
+    return post_processed_text
 
 
 class FastOPTInference(FastInferenceInterface):
@@ -21,7 +66,11 @@ class FastOPTInference(FastInferenceInterface):
                 dist.init_process_group(backend='mpi')
         except:
             print("[INFO] WARNING: Have initialized the process group")
-            
+        
+        args['worker_name'] = 'worker'+str(dist.get_rank())
+        args['workers'] = dist.get_world_size()
+        args['rank'] = dist.get_rank()
+        
         super().__init__(model_name, args if args is not None else {})
         print("\n=============== Arguments ===============")
         print(args.keys())
@@ -47,21 +96,29 @@ class FastOPTInference(FastInferenceInterface):
             "return_output_length":0,
         }
         
-        hf_config = vars(AutoConfig.from_pretrained(args['hf_model_name']))
-        head_num = hf_config['num_attention_heads']
-        layer_num = hf_config['num_hidden_layers']
+        if args['hf_model_name'] == 'facebook/opt-175b':
+            hf_config = vars(AutoConfig.from_pretrained('facebook/opt-66b'))
+            head_num = 96
+            layer_num = 96
+            max_seq_len = 2048
+            size_per_head = 128
+            self.tokenizer = AutoTokenizer.from_pretrained('facebook/opt-66b')
+        else:
+            hf_config = vars(AutoConfig.from_pretrained(args.hf_model_name))
+            head_num = hf_config['num_attention_heads']
+            layer_num = hf_config['num_hidden_layers']
+            max_seq_len = hf_config['max_position_embeddings']
+            size_per_head = hf_config['hidden_size'] // head_num
+            self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
         start_id = hf_config['bos_token_id']
         self.end_id = hf_config['eos_token_id']
-        size_per_head = hf_config['hidden_size'] // head_num
         vocab_size = 50272
-        max_seq_len = 2048
         layernorm_eps = 1e-5
         layernorm_type = 'pre_layernorm' if hf_config['do_layer_norm_before'] else 'post_layernorm'
         activation_type = 'Relu' if hf_config['activation_function'] == 'relu' else 'Gelu'
         has_post_decoder_layernorm = layernorm_type == 'pre_layernorm'
         lib_path = '/workspace/Port_FasterTransformer/build/lib/libth_parallel_gpt.so'
-        ckpt_path = '/workspace/Port_FasterTransformer/build/model/opt-66b-fp16-tp8/8-gpu'
-        self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
+        ckpt_path = args['ckpt_path']
         self.tokenizer.pad_token = self.tokenizer.eos_token
         torch.manual_seed(0)
         with torch.no_grad():
@@ -70,8 +127,9 @@ class FastOPTInference(FastInferenceInterface):
                                          max_seq_len, self.tensor_para_size, self.pipeline_para_size, lib_path,
                                          layernorm_eps, layernorm_type, activation_type, has_post_decoder_layernorm,
                                          int8_mode=0, weights_data_type='fp16')
-            if not self.opt_model.load(ckpt_path=ckpt_path):
+            if not self.opt_model.load_w_type(ckpt_path=ckpt_path, infer_data_type='fp16'):
                 print("[WARNING] Checkpoint file not found. Model loading is skipped.")
+               
                 
         print(f"<FastOPTInference.__init__> rank {dist.get_rank()} initialization done")
 
@@ -93,21 +151,44 @@ class FastOPTInference(FastInferenceInterface):
         args = {k: v for k, v in args.items() if v is not None}
         # Inputs
         self.task_info["prompt_seqs"] = [args['prompt']]
-        self.task_info["output_len"] = args.get("max_tokens", 16)
-        self.task_info["beam_width"] = args.get("beam_width", 1)
-        self.task_info["top_k"] = args.get("top_k", 50)
-        self.task_info["top_p"] = args.get("top_p", 0)
-        self.task_info["beam_search_diversity_rate"] = args.get("beam_search_diversity_rate", 0)
-        self.task_info["temperature"] = args.get("temperature", 0.1)
-        self.task_info["len_penalty"] = args.get("len_penalty", 0)
-        self.task_info["repetition_penalty"] = args.get("repetition_penalty", 1.0)
+        self.task_info["output_len"] = get_int(args.get("max_tokens", 16), default=16)
+        self.task_info["beam_width"] = get_int(args.get("beam_width", 1), default=1)
+        self.task_info["top_k"] = get_int(args.get("top_k", 50), default=50)
+        self.task_info["top_p"] = get_float(args.get("top_p", 0.0), default=0.0)
+        self.task_info["beam_search_diversity_rate"] = get_float(args.get("beam_search_diversity_rate", 0.0), default=0.0)
+        self.task_info["temperature"] = get_float(args.get("temperature", 0.8), default=0.1)
+        self.task_info["len_penalty"] = get_float(args.get("len_penalty", 0.0), default=0.0)
+        self.task_info["repetition_penalty"] = get_float(args.get("repetition_penalty", 1.0), default=1.0)
+        self.task_info["stop"] = args.get("stop", [])
+        self.task_info["stream_tokens"] = args.get("stream_tokens", False)
         self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         self.task_info["return_output_length"] = args.get("return_output_length", 0)
         
-        self._sync_task_info()
-        result = self._run_inference()
-        print(f"<FastOPTInference.dispatch_request> return: {result}")
-        return result
+        if len(self.task_info["prompt_seqs"][0]) == 0 or self.task_info["output_len"] == 0:
+            inferenece_result = []
+            item = {'choices': [], }
+            for beam_id in range(self.task_info["beam_width"]):
+                choice = {
+                    "text": '',
+                    "index": beam_id,
+                    "finish_reason": "length"
+                }
+            item['choices'].append(choice)
+            inferenece_result.append(item)
+            #  So far coordinator does not support batch. 
+            result = {
+                "result_type": RequestTypeLanguageModelInference,
+                "choices": inferenece_result[0]['choices'],
+                "raw_compute_time": 0.0
+            }
+            print(f"<FastGPTJInference.dispatch_request> (not FT runs, 0 input or output) return: {result}")
+            return result
+        else:
+        
+            self._sync_task_info()
+            result = self._run_inference()
+            print(f"<FastOPTInference.dispatch_request> return: {result}")
+            return result
 
     def _run_inference(self):
         print(f"<FastOPTInference._run_inference> enter rank-<{dist.get_rank()}>")
@@ -157,7 +238,7 @@ class FastOPTInference(FastInferenceInterface):
                     output = self.tokenizer.decode(token)
                     print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
                     choice = {
-                        "text": output,
+                        "text": post_processing_text(output, self.task_info["stop"]),
                         "index": beam_id,
                         "finish_reason": "length"
                     }
@@ -179,16 +260,39 @@ class FastOPTInference(FastInferenceInterface):
         
 
 if __name__ == "__main__":
+    
+    logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--together_model_name', type=str, default='Together-opt-175b',
+                        help='worker name for together coordinator.')
+    parser.add_argument('--hf_model_name', type=str, default='facebook/opt-175b',
+                        help='hugging face model name (used to load config).')
+    parser.add_argument('--ckpt_path', type=str, default='/workspace/Port_FasterTransformer/build/model/opt-175b-tp6/6-gpu',
+                        help='path to the checkpoint file.')
+    # parser.add_argument('--worker_name', type=str, default='worker1',
+    #                      help='worker name for together coordinator.')
+    parser.add_argument('--tensor_para_size', type=int, default=1,
+                        help='tensor parallel size')
+    parser.add_argument('--group_name', type=str, default='group1',
+                        help='group name for together coordinator.')
+    
+    
+    args = parser.parse_args()
+    
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
+    
     coordinator = TogetherWeb3(
-        TogetherClientOptions(),
+        TogetherClientOptions(reconnect=True),
         http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
-    fip = FastOPTInference(model_name="opt66b", args={
+    fip = FastOPTInference(model_name=args.together_model_name, args={
         "coordinator": coordinator,
-        "hf_model_name": "facebook/opt-66b",
-        "tensor_para_size":8,
+        "hf_model_name": args.hf_model_name,
+        "group_name": args.group_name,
+        "ckpt_path": args.ckpt_path,
+        "tensor_para_size":args.tensor_para_size,
+        "stream_tokens_pipe": False,
         "max_batch_size":1
     })
     fip.start()
