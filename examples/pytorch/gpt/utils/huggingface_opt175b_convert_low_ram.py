@@ -26,7 +26,6 @@ import torch
 import os
 import sys
 from datetime import datetime
-from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from transformers import AutoConfig, AutoModelForCausalLM # transformers-4.20.0.dev0
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../../..")

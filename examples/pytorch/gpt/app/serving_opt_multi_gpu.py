@@ -14,49 +14,8 @@ import torch
 import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
 from utils.gpt import ParallelGPT
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
-
-
-def get_int(input_: str, default=0) -> int:
-    try:
-        my_num = int(input_)
-        return my_num
-    except ValueError:
-        print(f'Invalid int {input_} set to default: {default}')
-        return default
-
-
-def get_float(input_: str, default=0.0) -> float:
-    try:
-        my_num = float(input_)
-        return my_num
-    except ValueError:
-        print(f'Invalid float {input_} set to default: {default}')
-        return default
-
-
-def post_processing_text(output_text, stop_tokens):
-    print(f"<post_processing_text> output_text: {output_text}")
-
-    filtered_stop_tokens = []
-    for token in stop_tokens:
-        if token != '':
-            filtered_stop_tokens.append(token)
-            
-    print(f"<post_processing_text> stop_tokens: {filtered_stop_tokens}.")
-
-    end_pos = len(output_text)
-    print(f"<post_processing_text>1 end_pos: {end_pos}.")
-    for stop_token in filtered_stop_tokens:
-        if output_text.find(stop_token) != -1:
-            end_pos = min(output_text.find(stop_token), end_pos)
-
-    print(f"<post_processing_text>2 end_pos: {end_pos}.")
-    print(f"<post_processing_text> text: {output_text}, end_pos: {end_pos}")
-    post_processed_text = output_text[:end_pos]
-    print(f"<post_processing_text> input: {output_text}")
-    print(f"<post_processing_text> output: {post_processed_text}")
-    return post_processed_text
+from utils.para_utils import *
+from transformers import AutoTokenizer, AutoConfig
 
 
 class FastOPTInference(FastInferenceInterface):
@@ -104,7 +63,7 @@ class FastOPTInference(FastInferenceInterface):
             size_per_head = 128
             self.tokenizer = AutoTokenizer.from_pretrained('facebook/opt-66b')
         else:
-            hf_config = vars(AutoConfig.from_pretrained(args.hf_model_name))
+            hf_config = vars(AutoConfig.from_pretrained(args['hf_model_name']))
             head_num = hf_config['num_attention_heads']
             layer_num = hf_config['num_hidden_layers']
             max_seq_len = hf_config['max_position_embeddings']
@@ -184,7 +143,6 @@ class FastOPTInference(FastInferenceInterface):
             print(f"<FastGPTJInference.dispatch_request> (not FT runs, 0 input or output) return: {result}")
             return result
         else:
-        
             self._sync_task_info()
             result = self._run_inference()
             print(f"<FastOPTInference.dispatch_request> return: {result}")
@@ -275,7 +233,6 @@ if __name__ == "__main__":
                         help='tensor parallel size')
     parser.add_argument('--group_name', type=str, default='group1',
                         help='group name for together coordinator.')
-    
     
     args = parser.parse_args()
     
