@@ -2,7 +2,7 @@
 worker:
   mode: docker-service
   image: togethercomputer/fastertransformer
-  model_url: https://together-modelhub.s3.us-west-2.amazonaws.com/GPT-JT-6B-v1-tp1
+  model_url: https://together-modelhub.s3.us-west-2.amazonaws.com/{{.MODEL}}
   group:
     alloc: each
   gpu:

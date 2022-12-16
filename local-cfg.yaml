@@ -1,8 +1,7 @@
-# Installed to ~/.together/cfg.yaml in container
+# Installed to /home/user/cfg.yaml in container
 worker:
   mode: local-service
   group:
     alloc: each
   command: /workspace/Port_FasterTransformer/serve.sh
-  model_dir: /together/together_models
-  model_url: https://together-modelhub.s3.us-west-2.amazonaws.com/GPT-JT-6B-v1-tp1
+  model_url: https://together-modelhub.s3.us-west-2.amazonaws.com/{{.MODEL}}

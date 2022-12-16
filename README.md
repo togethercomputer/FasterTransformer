@@ -3,13 +3,13 @@
 To bring up a standalone node:
 
 ```console
-mkdir models
 mkdir .together
 docker run --rm --gpus all \
   -e NUM_WORKERS=auto \
-  -v $PWD/models:/together/together_models \
-  -v $PWD/.together:/home/user/.together/together \
-  -it togethercomputer/fastertransformer /usr/local/bin/together start --color
+  -e CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
+  -v $PWD/.together:/home/user/.together \
+  -it togethercomputer/fastertransformer /usr/local/bin/together start \
+    --worker.model GPT-JT-6B-v1-tp1 --config /home/user/cfg.yaml --color
 ```
 
 # Development commands

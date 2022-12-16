@@ -11,9 +11,10 @@ RUN mkdir -p build && \
 
 FROM nvcr.io/nvidia/pytorch:22.04-py3
 WORKDIR /workspace/Port_FasterTransformer
+ENV HOME=/home/user
 COPY --from=builder /workspace/Port_FasterTransformer/build/lib /workspace/Port_FasterTransformer/build/lib 
 COPY --from=node /usr/local/bin/together /usr/local/bin/
-COPY local-cfg.yaml /root/.together/cfg.yaml
+COPY local-cfg.yaml /home/user/cfg.yaml
 COPY examples examples
 COPY serve.sh serve.sh
 RUN pip install -r ./examples/pytorch/gpt/requirement.txt && \
