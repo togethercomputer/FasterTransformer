@@ -1,29 +1,25 @@
-import logging
 import os
 from typing import Dict
-import sys
+import argparse
 import timeit
-from common.fast_inference import FastInferenceInterface
-from common.together_web3.computer import RequestTypeLanguageModelInference
-from common.together_web3.together import TogetherWeb3, TogetherClientOptions
+import logging
+# from common.fast_inference import FastInferenceInterface
+# from common.together_web3.computer import RequestTypeLanguageModelInference
+# from common.together_web3.together import TogetherWeb3, TogetherClientOptions
+# from utils.fast_inference import FastInferenceInterface
+from together_worker.fast_inference import FastInferenceInterface
+from together_web3.computer import RequestTypeLanguageModelInference
+from together_web3.together import TogetherWeb3, TogetherClientOptions
 import torch
 import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
-
-dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(dir_path + "/../../..")
-from examples.pytorch.gpt.utils.parallel_gpt import ParallelGPT
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+from utils.gpt import GPT
+from utils.para_utils import *
+from transformers import AutoTokenizer, AutoConfig
 
 
 class FastOPTInference(FastInferenceInterface):
-    def __init__(self, model_name: str, args=None) -> None:
-        try:
-            if not dist.is_initialized():
-                dist.init_process_group(backend='mpi')
-        except:
-            print("[INFO] WARNING: Have initialized the process group")
-            
+    def __init__(self, model_name: str, args=None) -> None:    
         super().__init__(model_name, args if args is not None else {})
         print("\n=============== Arguments ===============")
         print(args.keys())
@@ -31,7 +27,7 @@ class FastOPTInference(FastInferenceInterface):
         #for key in args.keys():
         #    print("{}: {}".format(arg, getattr(args, arg)))
         print("=========================================\n")
-        self.tensor_para_size = args['tensor_para_size']
+        self.tensor_para_size = 1
         self.pipeline_para_size = 1
         self.max_batch_size = args['max_batch_size']
         self.random_seed_tensor = torch.zeros([self.max_batch_size], dtype=torch.int64)
@@ -61,53 +57,41 @@ class FastOPTInference(FastInferenceInterface):
         layernorm_type = 'pre_layernorm' if hf_config['do_layer_norm_before'] else 'post_layernorm'
         activation_type = 'Relu' if hf_config['activation_function'] == 'relu' else 'Gelu'
         has_post_decoder_layernorm = layernorm_type == 'pre_layernorm'
-        lib_path = '/workspace/Port_FasterTransformer/build/lib/libth_parallel_gpt.so'
-        ckpt_path = '/workspace/Port_FasterTransformer/build/model/opt-66b-fp16-tp8/8-gpu'
-        self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
+        lib_path = '/workspace/Port_FasterTransformer/build/lib/libth_gpt.so'
+        ckpt_path = args['ckpt_path']
+        assert(ckpt_path.endswith("1-gpu"))
+        self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'], use_fast=False)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         torch.manual_seed(0)
         with torch.no_grad():
             # Prepare model.
-            self.opt_model = ParallelGPT(head_num, size_per_head, vocab_size, start_id, self.end_id, layer_num,
+            self.opt_model = GPT(head_num, size_per_head, vocab_size, start_id, self.end_id, layer_num,
                                          max_seq_len, self.tensor_para_size, self.pipeline_para_size, lib_path,
                                          layernorm_eps, layernorm_type, activation_type, has_post_decoder_layernorm,
                                          int8_mode=0, weights_data_type='fp16')
-            if not self.opt_model.load(ckpt_path=ckpt_path):
-                print("[WARNING] Checkpoint file not found. Model loading is skipped.")
-                
-        print(f"<FastOPTInference.__init__> rank {dist.get_rank()} initialization done")
-
-    def _sync_task_info(self):
-        print(f"<FastOPTInference._sync_task_info> enter rank-<{dist.get_rank()}>")
-        dist.barrier()
-        if dist.get_rank() == 0:
-            dist.broadcast_object_list([self.task_info], src=0)
-        else:
-            info = [None]
-            torch.distributed.broadcast_object_list(info, src=0)
-            self.task_info = info[0]
-        dist.barrier()
-        print(f"<FastOPTInference._sync_task_info> leave rank-<{dist.get_rank()}, task_info:{self.task_info}>")
-        
+            if not self.opt_model.load_w_type(ckpt_path=ckpt_path, infer_data_type='fp16'):
+                print("[WARNING] Checkpoint file not found. Model loading is skipped.")      
+        print(f"<FastOPTInference.__init__> initialization done")
+    
     def dispatch_request(self, args, env) -> Dict:
-        print(f"Rank {dist.get_rank()} get {args}")
+        print(f"dispatch_request get {args}")
         args = args[0]
         args = {k: v for k, v in args.items() if v is not None}
         # Inputs
         self.task_info["prompt_seqs"] = [args['prompt']]
-        self.task_info["output_len"] = args.get("max_tokens", 16)
-        self.task_info["beam_width"] = args.get("beam_width", 1)
-        self.task_info["top_k"] = args.get("top_k", 50)
-        self.task_info["top_p"] = args.get("top_p", 0)
-        self.task_info["beam_search_diversity_rate"] = args.get("beam_search_diversity_rate", 0)
-        self.task_info["temperature"] = args.get("temperature", 0.1)
-        self.task_info["len_penalty"] = args.get("len_penalty", 0)
-        self.task_info["repetition_penalty"] = args.get("repetition_penalty", 1.0)
+        self.task_info["output_len"] = get_int(args.get("max_tokens", 16), default=16)
+        self.task_info["beam_width"] = get_int(args.get("beam_width", 1), default=1)
+        self.task_info["top_k"] = get_int(args.get("top_k", 50), default=50)
+        self.task_info["top_p"] = get_float(args.get("top_p", 0.0), default=0.0)
+        self.task_info["beam_search_diversity_rate"] = get_float(args.get("beam_search_diversity_rate", 0.0), default=0.0)
+        self.task_info["temperature"] = get_float(args.get("temperature", 0.8), default=0.1)
+        self.task_info["len_penalty"] = get_float(args.get("len_penalty", 0.0), default=0.0)
+        self.task_info["repetition_penalty"] = get_float(args.get("repetition_penalty", 1.0), default=1.0)
+        self.task_info["stop"] = args.get("stop", [])
+        self.task_info["stream_tokens"] = args.get("stream_tokens", False)
         self.task_info["return_cum_log_probs"] = args.get("return_cum_log_probs", 0)
         self.task_info["return_output_length"] = args.get("return_output_length", 0)
-        self.task_info["stream_tokens"] = args.get("stream_tokens", False)
-        
-        self._sync_task_info()
+          
         result = self._run_inference()
         print(f"<FastOPTInference.dispatch_request> return: {result}")
         return result
@@ -138,64 +122,70 @@ class FastOPTInference(FastInferenceInterface):
                                     self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     self.random_seed_tensor,
                                     self.task_info["return_output_length"],
-                                    self.task_info["return_cum_log_probs"],
-                                    self.served,
-                                    self.stream_tokens_pipe_w if self.task_info["stream_tokens"] else -1)
+                                    self.task_info["return_cum_log_probs"])
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
         print("[INFO] OPT time costs: {:.2f} ms. <rank-{}>".format(time_elapsed * 1000, dist.get_rank()))
         
-        if dist.get_rank() == 0:
-            assert tokens_batch is not None
-        
-            if self.task_info["return_cum_log_probs"] > 0:
-                tokens_batch, _, cum_log_probs = tokens_batch
-                print('[INFO] Log probs of sentences:', cum_log_probs)
+        assert tokens_batch is not None
+    
+        if self.task_info["return_cum_log_probs"] > 0:
+            tokens_batch, _, cum_log_probs = tokens_batch
+            print('[INFO] Log probs of sentences:', cum_log_probs)
 
-            inferenece_result = []
-            tokens_batch = tokens_batch.cpu().numpy()
-            
-            for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
-                item = {'choices': [], }
-                for beam_id in range(self.task_info["beam_width"]):
-                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    output = self.tokenizer.decode(token)
-                    print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
-                    choice = {
-                        "text": output,
-                        "index": beam_id,
-                        "finish_reason": "length"
-                    }
-                item['choices'].append(choice)
-                inferenece_result.append(item)
-            #  So far coordinator does not support batch. 
-            return {
-                "result_type": RequestTypeLanguageModelInference,
-                "choices": inferenece_result[0]['choices'],
-                "raw_compute_time": time_elapsed
-            }
-        else:
-            return None
+        inferenece_result = []
+        tokens_batch = tokens_batch.cpu().numpy()
         
-    def worker(self):
-        while True:
-            self._sync_task_info()
-            self._run_inference()
+        for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
+            item = {'choices': [], }
+            for beam_id in range(self.task_info["beam_width"]):
+                token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                output = self.tokenizer.decode(token)
+                print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
+                choice = {
+                    "text": post_processing_text(output, self.task_info["stop"]),
+                    "index": beam_id,
+                    "finish_reason": "length"
+                }
+            item['choices'].append(choice)
+            inferenece_result.append(item)
+        #  So far coordinator does not support batch. 
+        return {
+            "result_type": RequestTypeLanguageModelInference,
+            "choices": inferenece_result[0]['choices'],
+            "raw_compute_time": time_elapsed
+        }
         
 
 if __name__ == "__main__":
+    
     logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--together_model_name', type=str, default='Together-opt-1.3b',
+                        help='worker name for together coordinator.')
+    parser.add_argument('--hf_model_name', type=str, default='facebook/opt-1.3b',
+                        help='hugging face model name (used to load config).')
+    parser.add_argument('--ckpt_path', type=str, default='/workspace/Port_FasterTransformer/build/model/opt-1.3b-tp1/1-gpu',
+                        help='path to the checkpoint file.')
+    # parser.add_argument('--worker_name', type=str, default='worker1',
+    #                      help='worker name for together coordinator.')
+    parser.add_argument('--group_name', type=str, default='group1',
+                        help='group name for together coordinator.')
+    
+    args = parser.parse_args()
+    
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
     coordinator = TogetherWeb3(
         TogetherClientOptions(reconnect=True),
         http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
-    fip = FastOPTInference(model_name="opt66b", args={
+    fip = FastOPTInference(model_name=args.together_model_name, args={
         "coordinator": coordinator,
-        "hf_model_name": "facebook/opt-66b",
-        "tensor_para_size":8,
-        "max_batch_size":1,
-        "stream_tokens_pipe": True,
+        "hf_model_name": args.hf_model_name,
+        "group_name": args.group_name,
+        "ckpt_path": args.ckpt_path,
+        "stream_tokens_pipe": False,
+        "max_batch_size":1
     })
     fip.start()

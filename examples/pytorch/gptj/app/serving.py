@@ -11,6 +11,7 @@ from transformers import AutoTokenizer, AutoConfig
 from torch.nn.utils.rnn import pad_sequence
 from utils.gptj import GPTJ
 import argparse
+import logging
 
 
 def get_int(input_: str, default=0) -> int:
@@ -58,15 +59,15 @@ def post_processing_text(output_text, stop_tokens):
 class FastGPTJTInference(FastInferenceInterface):
     def __init__(self, model_name: str, args=None) -> None:
         super().__init__(model_name, args if args is not None else {})
+        print(f"Model name: {model_name}")
         print("\n=============== Arguments ===============")
         print(args.keys())
         print(args)
         #for key in args.keys():
         #    print("{}: {}".format(arg, getattr(args, arg)))
         print("=========================================\n")
-        
         print(f"<FastGPTJTInference>: Group_name after super setting: <{self.coordinator_join_request.group_name}>")
-        
+
         self.tensor_para_size = 1
         self.pipeline_para_size = 1
         self.max_batch_size = args['max_batch_size']
@@ -103,7 +104,7 @@ class FastGPTJTInference(FastInferenceInterface):
         # Prepare model.
         self.gptj_model = GPTJ(head_num, size_per_head, layer_num, vocab_size, rotary_embedding_dim, 
                 start_id, self.end_id, max_seq_len, 1, 1,
-                lib_path=lib_path, weights_data_type='fp32')
+                lib_path=lib_path, weights_data_type='fp32', device_index=os.environ.get('DEVICE'))
    
         if not self.gptj_model.load(ckpt_path=ckpt_path, infer_data_type='fp16'):
             print("[WARNING] Checkpoint file not found. Model loading is skipped.")
@@ -220,7 +221,7 @@ class FastGPTJTInference(FastInferenceInterface):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--together_model_name', type=str, default='Together-gpt-JT-6B-v1',
+    parser.add_argument('--together_model_name', type=str, default=os.environ.get('MODEL', 'Together-gpt-JT-6B-v1'),
                         help='worker name for together coordinator.')
     parser.add_argument('--hf_model_name', type=str, default='togethercomputer/GPT-JT-6B-v1',
                         help='hugging face model name (used to load config).')
@@ -228,7 +229,7 @@ if __name__ == "__main__":
                         help='path to the checkpoint file.')
     parser.add_argument('--worker_name', type=str, default='worker1',
                         help='worker name for together coordinator.')
-    parser.add_argument('--group_name', type=str, default='group1',
+    parser.add_argument('--group_name', type=str, default=os.environ.get('GROUP', 'group1'),
                         help='group name for together coordinator.')
     
     
@@ -238,7 +239,7 @@ if __name__ == "__main__":
     
     coordinator = TogetherWeb3(
         TogetherClientOptions(reconnect=True),
-        http_url=f"http://{coord_url}:8094",
+        http_url=f"http://{coord_url}:8092",
         websocket_url=f"ws://{coord_url}:8093/websocket"
     )
     fip = FastGPTJTInference(model_name=args.together_model_name, args={

@@ -26,10 +26,12 @@ import torch
 import os
 import sys
 from datetime import datetime
-from transformers import OPTForCausalLM, AutoModelForCausalLM # transformers-4.20.0.dev0
+from transformers import AutoConfig, AutoModelForCausalLM # transformers-4.20.0.dev0
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../../..")
 sys.path.append(dir_path)
+
+
 
 def get_weight_data_type(data_type):
     if data_type == "fp32":
@@ -39,7 +41,7 @@ def get_weight_data_type(data_type):
     else:
         assert False, f"Invalid weight data type {data_type}"
 
-def split_and_convert_process(i, saved_dir,factor,key,args, val):
+def split_and_convert_process(i, saved_dir, factor, key, val):
     print("<split_and_convert_process> handle layer: ", key)
     if key.find("input_layernorm.weight") != -1 or key.find("input_layernorm.bias") != -1 or \
         key.find("attention.dense.bias") != -1 or key.find("post_attention_layernorm.weight") != -1 or \
@@ -97,27 +99,25 @@ def split_and_convert(args):
 
     if(os.path.exists(saved_dir) == False):
         os.makedirs(saved_dir)
-    ckpt_name = args.in_file
 
     t_gpu_num = args.trained_gpu_num
     i_gpu_num = args.infer_gpu_num
     assert(i_gpu_num % t_gpu_num == 0)
 
     factor = (int)(i_gpu_num / t_gpu_num)
-
-    # load position_embedding from rank 0
-    model = AutoModelForCausalLM.from_pretrained(args.in_file)
-
-    hf_config = vars(model.config)
-
+    
+    print(f"hf model loading")
+    hf_config = AutoConfig.from_pretrained(args.in_file+'/config.json')
+    print(hf_config)
+    model=torch.load(args.in_file+'/pytorch_model.bin')
+    print(f"hf model loaded")
+    hf_config = vars(hf_config)
     num_layers = hf_config["num_hidden_layers"]
-
-    layer_names = [name for name, param in model.named_parameters()]
 
     # NOTE: save parameters to config files (loaded by triton backends)
     config = configparser.ConfigParser()
     config["gpt"] = {}
-    has_post_decoder_layernorm = "model.decoder.final_layer_norm.bias" in layer_names
+    has_post_decoder_layernorm = "decoder.final_layer_norm.bias" in model['model']
     try:
         config["gpt"]["model_name"] = "opt" if hf_config["_name_or_path"] == '' else hf_config["_name_or_path"]
         config["gpt"]["head_num"] = str(hf_config["num_attention_heads"])
@@ -171,19 +171,21 @@ def split_and_convert(args):
         "mlp.dense_4h_to_h.weight",
     ]
 
-    model_named_parameters_iter =  model.named_parameters()
     model_named_parameters = dict()
-    for name, param in model_named_parameters_iter:
+    for name in model['model'].keys():
+        param = model['model'][name]
+        print(f"<split_and_convert>: insert key: {name} param type: {param.dtype}")
         if name.find("embed") != -1:
-            model_named_parameters[name] = param
+            model_named_parameters['model.'+name] = param
         elif name.find("project_in") != -1:
-            model_named_parameters[name] = param.permute(1, 0)
+            model_named_parameters['model.'+name] = param.permute(1, 0)
         elif name.find("project_out") != -1:
-            model_named_parameters[name] = param
+            model_named_parameters['model.'+name] = param
         else:
-            model_named_parameters[name] = param.permute(1, 0) if len(param.shape) == 2 else param
+            model_named_parameters['model.'+name] = param.permute(1, 0) if len(param.shape) == 2 else param
     # print(model_named_parameters.keys())
     for l in range(num_layers):
+        print("<split_and_convert>: merge kqv layer-", l)
         q_weight = model_named_parameters[f'model.decoder.layers.{l}.self_attn.q_proj.weight']
         k_weight = model_named_parameters[f'model.decoder.layers.{l}.self_attn.k_proj.weight']
         v_weight = model_named_parameters[f'model.decoder.layers.{l}.self_attn.v_proj.weight']
@@ -194,12 +196,19 @@ def split_and_convert(args):
         qkv_bias = fuse_qkv_weight(q_bias, k_bias, v_bias)
         model_named_parameters[f'model.decoder.layers.{l}.self_attn.qkv_proj.weight'] = qkv_weight
         model_named_parameters[f'model.decoder.layers.{l}.self_attn.qkv_proj.bias'] = qkv_bias
+        del model_named_parameters[f'model.decoder.layers.{l}.self_attn.q_proj.weight']
+        del model_named_parameters[f'model.decoder.layers.{l}.self_attn.k_proj.weight']
+        del model_named_parameters[f'model.decoder.layers.{l}.self_attn.v_proj.weight']
+        del model_named_parameters[f'model.decoder.layers.{l}.self_attn.q_proj.bias']
+        del model_named_parameters[f'model.decoder.layers.{l}.self_attn.k_proj.bias']
+        del model_named_parameters[f'model.decoder.layers.{l}.self_attn.v_proj.bias']
     
     torch.multiprocessing.set_start_method("spawn")
     torch.multiprocessing.set_sharing_strategy("file_system")
     pool = multiprocessing.Pool(args.processes)
     padding_offset = 2
     for name, param in model_named_parameters.items():
+        print(f"<split_and_convert>: handle <{name}>")
         if name == 'model.decoder.embed_positions.weight':
             param[padding_offset:,...].detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.wpe.bin")
         elif name == 'model.decoder.embed_tokens.weight':
@@ -211,22 +220,28 @@ def split_and_convert(args):
             else:
                 param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.wte.bin")
                 param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.lm_head.weight.bin")
-        elif name == 'model.decoder.final_layer_norm.weight':
+        elif name == 'model.decoder.layer_norm.weight':
             param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.final_layernorm.weight.bin")
-        elif name == 'model.decoder.final_layer_norm.bias':
+        elif name == 'model.decoder.layer_norm.bias':
             param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.final_layernorm.bias.bin")
         elif name.find("project_in") != -1 or name.find("project_out") != -1:
             continue
         else:
+            """
+            for i in range(len(huggingface_model_name_pattern)):
+                if name.find(huggingface_model_name_pattern[i]) != -1:
+                    new_name = name.replace("model.decoder.layers.", "layers.").replace(huggingface_model_name_pattern[i], ft_model_name_pattern[i])
+                    split_and_convert_process(0, saved_dir, factor, new_name, param.detach().cpu().numpy().astype(np_weight_data_type))
+            """
             for i in range(len(huggingface_model_name_pattern)):
                 if name.find(huggingface_model_name_pattern[i]) != -1:
                     new_name = name.replace("model.decoder.layers.", "layers.").replace(huggingface_model_name_pattern[i], ft_model_name_pattern[i])
                     pool.starmap(split_and_convert_process,
-                                [(0, saved_dir, factor, new_name, args,
-                                    param.detach().cpu().numpy().astype(np_weight_data_type))], )
+                                [(0, saved_dir, factor, new_name, param.detach().cpu().numpy().astype(np_weight_data_type))],)
 
     pool.close()
     pool.join()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -234,8 +249,8 @@ if __name__ == "__main__":
     parser.add_argument('-in_file', '-i', type=str, help='file name of input checkpoint file', required=True)
     parser.add_argument('-trained_gpu_num', '-t_g', type=int, help='How many gpus for inference', default=1)
     parser.add_argument('-infer_gpu_num', '-i_g', type=int, help='How many gpus for inference', required=True)
-    parser.add_argument("-processes", "-p", type=int, help="How many processes to spawn for conversion (default: 4)", default=4)
     parser.add_argument("-weight_data_type", type=str, default="fp32", choices=["fp32", "fp16"])
+    parser.add_argument("-processes", "-p", type=int, help="How many processes to spawn for conversion (default: 4)", default=4)
 
     args = parser.parse_args()
     print("\n=============== Argument ===============")

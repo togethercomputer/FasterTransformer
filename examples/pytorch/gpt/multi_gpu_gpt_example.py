@@ -192,17 +192,18 @@ def main():
         
         torch.cuda.empty_cache()
         
-        if not gpt.load(ckpt_path=args.ckpt_path):
+        # if not gpt.load(ckpt_path=args.ckpt_path):
+        if not gpt.load_w_type(ckpt_path=args.ckpt_path, infer_data_type='fp16'):
             print("[WARNING] Checkpoint file not found. Model loading is skipped.")
         
         if dist.get_rank() == 0:
             print("=========Profiling after gpt.load=========")
             profiling_torch_tensor_memory()
         
-        if args.data_type == 'fp16':
-            gpt.half()
-        elif args.data_type == 'bf16':
-            gpt.bfloat16()
+        # if args.data_type == 'fp16':
+        #    gpt.half()
+        # elif args.data_type == 'bf16':
+        #    gpt.bfloat16()
 
     with torch.no_grad():
         # Generate tokens.

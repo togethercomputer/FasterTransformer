@@ -419,9 +419,7 @@ class GPT(nn.Module):
                 repetition_penalty=None,
                 random_seed=None,
                 return_output_length=False,
-                return_cum_log_probs=0,
-                request_id=None,
-                stream_tokens_pipe=None):
+                return_cum_log_probs=0):
         if not self.build_model:
             self.cuda()
         input_len = start_ids.size(1)
@@ -442,9 +440,7 @@ class GPT(nn.Module):
                                      len_penalty, # optional, can be None
                                      repetition_penalty, # optional, can be None
                                      random_seed, # optional, can be None
-                                     return_cum_log_probs, # optional, can be None
-                                     request_id,  # optional, can be None
-                                     stream_tokens_pipe)  # optional, can be None
+                                     return_cum_log_probs) # optional, can be None
         if return_cum_log_probs == 0:
             output_ids, output_lengths = outputs
         else:
@@ -631,3 +627,35 @@ class GptModelConfig:
             start_id=bos_id,
             end_id=eos_id,
         )
+
+
+class ParallelGPT(GPT):
+    def __init__(self, head_num, size_per_head, vocab_size, start_id, end_id, layer_num, max_seq_len,
+                 tensor_para_size, pipeline_para_size, lib_path,
+                 layernorm_eps = 1e-6, layernorm_type = "pre_layernorm", # gpt_variant_params
+                 activation_type = "Gelu", has_post_decoder_layernorm = True, # gpt variant params
+                 has_adapters = False, adapter_inter_size = 0, # gpt variant params
+				 int8_mode = 0,
+                 weights_data_type: np.dtype = np.float32,
+                 shared_contexts_ratio=1.0):
+        super().__init__(head_num, size_per_head, vocab_size, start_id, end_id, layer_num, max_seq_len,
+                         tensor_para_size, pipeline_para_size, lib_path,
+                         layernorm_eps, layernorm_type, activation_type, has_post_decoder_layernorm,
+                         has_adapters, adapter_inter_size,
+                         int8_mode, weights_data_type, shared_contexts_ratio)
+
+    def cuda(self):
+        self.weights._map(lambda w: w.cuda(self.device))
+        if self.int8_mode != 0:
+            self.weights._map_int8(lambda w: w.cuda(self.device))
+
+        if self.build_model == True:
+            del self.model
+            self.build_model = False
+        self.model = torch.classes.FasterTransformer.ParallelGptOp(self.head_num, self.size_per_head, 4 * self.head_num * self.size_per_head,
+                                                                   self.layer_num, self.vocab_size, self.start_id, self.end_id,
+                                                                   self.tensor_para_size, self.pipeline_para_size, self.int8_mode,
+                                                                   self.layernorm_eps, self.layernorm_type, self.activation_type, self.has_post_decoder_layernorm,
+                                                                   self.has_adapters, self.adapter_inter_size, # gpt_variant_params
+                                                                   self.weights.w, self.weights.int8_w, self.weights.scale, self.shared_contexts_ratio)
+        self.build_model = True
