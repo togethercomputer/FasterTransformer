@@ -224,7 +224,7 @@ if __name__ == "__main__":
                         help='hugging face model name (used to load config).')
     parser.add_argument('--ckpt_path', type=str, default='/workspace/Port_FasterTransformer/build/model/GPT-JT-6B-v1-tp1/1-gpu',
                         help='path to the checkpoint file.')
-    parser.add_argument('--worker_name', type=str, default='worker1',
+    parser.add_argument('--worker_name', type=str, default=os.environ.get('WORKER','worker1'),
                         help='worker name for together coordinator.')
     parser.add_argument('--group_name', type=str, default=os.environ.get('GROUP', 'group1'),
                         help='group name for together coordinator.')

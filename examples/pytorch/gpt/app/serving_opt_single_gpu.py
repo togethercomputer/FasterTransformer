@@ -59,7 +59,7 @@ class FastOPTInference(FastInferenceInterface):
         has_post_decoder_layernorm = layernorm_type == 'pre_layernorm'
         lib_path = '/workspace/Port_FasterTransformer/build/lib/libth_gpt.so'
         ckpt_path = args['ckpt_path']
-        assert(ckpt_path.endswith("1-gpu"))
+        assert(ckpt_path.endswith("-tp1"))
         self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'], use_fast=False)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         torch.manual_seed(0)

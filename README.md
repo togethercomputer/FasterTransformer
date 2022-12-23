@@ -9,7 +9,17 @@ docker run --rm --gpus all \
   -e CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
   -v $PWD/.together:/home/user/.together \
   -it togethercomputer/fastertransformer /usr/local/bin/together start \
-    --worker.model GPT-JT-6B-v1-tp1 --config /home/user/cfg.yaml --color
+    --color --config /home/user/cfg.yaml \
+    --worker.model GPT-JT-6B-v1-tp1 --worker.model_type gptj
+```
+
+```console
+docker run --rm --gpus '"device=3,4"' \
+  -e NUM_WORKERS=auto \
+  -v $PWD/.together:/home/user/.together \
+  -it togethercomputer/fastertransformer /usr/local/bin/together start \
+    --color --config /home/user/cfg.yaml \
+    --worker.model opt-1.3b-tp1 --worker.model_type gpt
 ```
 
 # Development commands
