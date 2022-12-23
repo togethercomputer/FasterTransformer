@@ -7,7 +7,14 @@ if [[ ! -z "$CONDA_ACTIVATE" ]]; then
   conda activate $CONDA_ACTIVATE
 fi
 
-NUM_WORKERS=${NUM_WORKERS-1}
+export MODEL_BASE=`echo $MODEL | awk -F '-tp' '{print $1}'`
+export MODEL_SHARDS=`echo $MODEL | awk -F '-tp' '{print $2}'`
+if [[ ! "$MODEL_SHARDS" -gt 0 ]]; then
+  echo "Couldn't parse tensor parallelism"
+  exit 1
+fi
+
+NUM_WORKERS=${NUM_WORKERS-auto}
 if [[ -z "$CUDA_VISIBLE_DEVICES" ]]; then
   unset CUDA_VISIBLE_DEVICES
   if [[ "$NUM_WORKERS" == "auto" ]]; then
@@ -25,10 +32,29 @@ else
     echo NUM_WORKERS=auto resolved to NUM_WORKERS=${NUM_WORKERS}
   fi
 fi
+if [ "$NUM_WORKERS" -gt "$MODEL_SHARDS" ]; then
+  NUM_WORKERS=$MODEL_SHARDS
+  echo Reduced NUM_WORKERS to ${NUM_WORKERS} to match tensor parallelism
+fi
 
 count=0
 for i in ${DEVICES//,/$IFS}; do
-  env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gptj/app/serving.py --ckpt_path /home/user/.together/models/$MODEL' &
+  case ${MODEL_TYPE-gptj} in
+    gpt)
+      if [ "$MODEL_SHARDS" -gt 1 ]; then
+        env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gpt/app/serving_opt_multi_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --tensor_para_size $MODEL_SHARDS --ckpt_path /home/user/.together/models/$MODEL' &
+      else
+        env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python /workspace/Port_FasterTransformer/examples/pytorch/gpt/app/serving_opt_single_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --ckpt_path --ckpt_path /home/user/.together/models/$MODEL' &
+      fi
+    ;;
+    gptj)
+      env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gptj/app/serving.py --ckpt_path /home/user/.together/models/$MODEL' &
+    ;;
+    *)
+      echo Unknown MODEL_TYPE
+      exit 1
+    ;;
+  esac
   count=`expr $count + 1`
   if [ $count -eq $NUM_WORKERS ]; then
     break
