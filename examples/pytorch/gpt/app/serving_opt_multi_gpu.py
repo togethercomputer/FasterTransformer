@@ -221,17 +221,17 @@ if __name__ == "__main__":
     
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--together_model_name', type=str, default='Together-opt-175b',
+    parser.add_argument('--together_model_name', type=str, default=os.environ.get('SERVICE', 'Together-opt-175b'),
                         help='worker name for together coordinator.')
     parser.add_argument('--hf_model_name', type=str, default='facebook/opt-175b',
                         help='hugging face model name (used to load config).')
     parser.add_argument('--ckpt_path', type=str, default='/workspace/Port_FasterTransformer/build/model/opt-175b-tp6/6-gpu',
                         help='path to the checkpoint file.')
-    # parser.add_argument('--worker_name', type=str, default='worker1',
-    #                      help='worker name for together coordinator.')
     parser.add_argument('--tensor_para_size', type=int, default=1,
                         help='tensor parallel size')
-    parser.add_argument('--group_name', type=str, default='group1',
+    parser.add_argument('--worker_name', type=str, default=os.environ.get('WORKER','worker1'),
+                        help='worker name for together coordinator.')
+    parser.add_argument('--group_name', type=str, default=os.environ.get('GROUP', 'group1'),
                         help='group name for together coordinator.')
     
     args = parser.parse_args()
@@ -246,6 +246,7 @@ if __name__ == "__main__":
     fip = FastOPTInference(model_name=args.together_model_name, args={
         "coordinator": coordinator,
         "hf_model_name": args.hf_model_name,
+        "worker_name": args.worker_name,
         "group_name": args.group_name,
         "ckpt_path": args.ckpt_path,
         "tensor_para_size":args.tensor_para_size,

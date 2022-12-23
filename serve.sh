@@ -40,7 +40,7 @@ fi
 if [ "$MODEL_SHARDS" -gt 1 ]; then
   case ${MODEL_TYPE-gptj} in
     gpt)
-      env GROUP=${GROUP-group$i} /bin/bash -c 'mpirun -n $MODEL_SHARDS --allow-run-as-root python examples/pytorch/gpt/app/serving_opt_multi_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --tensor_para_size $MODEL_SHARDS --ckpt_path /home/user/.together/models/$MODEL'
+      env GROUP=${GROUP-group$i} /bin/bash -c 'mpirun -n $MODEL_SHARDS --allow-run-as-root python examples/pytorch/gpt/app/serving_opt_multi_gpu.py --hf_model_name facebook/$MODEL_BASE --tensor_para_size $MODEL_SHARDS --ckpt_path /home/user/.together/models/$MODEL'
     ;;
     *)
       echo Unknown MODEL_TYPE
@@ -54,7 +54,7 @@ count=0
 for i in ${DEVICES//,/$IFS}; do
   case ${MODEL_TYPE-gptj} in
     gpt)
-      env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gpt/app/serving_opt_single_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --ckpt_path /home/user/.together/models/$MODEL' &
+      env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gpt/app/serving_opt_single_gpu.py --hf_model_name facebook/$MODEL_BASE --ckpt_path /home/user/.together/models/$MODEL' &
     ;;
     gptj)
       env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gptj/app/serving.py --ckpt_path /home/user/.together/models/$MODEL' &

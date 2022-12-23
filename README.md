@@ -14,12 +14,12 @@ docker run --rm --gpus all \
 ```
 
 ```console
-docker run --rm --gpus '"device=3,4"' \
+docker run --rm --gpus '"device=3,4"' --ipc=host \
   -e NUM_WORKERS=auto \
   -v $PWD/.together:/home/user/.together \
   -it togethercomputer/fastertransformer /usr/local/bin/together start \
     --color --config /home/user/cfg.yaml \
-    --worker.model opt-1.3b-tp1 --worker.model_type gpt
+    --worker.model opt-13b-tp2 --worker.model_type gpt
 ```
 
 # Development commands
