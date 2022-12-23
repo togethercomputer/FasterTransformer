@@ -37,15 +37,24 @@ if [ "$NUM_WORKERS" -gt "$MODEL_SHARDS" ]; then
   echo Reduced NUM_WORKERS to ${NUM_WORKERS} to match tensor parallelism
 fi
 
+if [ "$MODEL_SHARDS" -gt 1 ]; then
+  case ${MODEL_TYPE-gptj} in
+    gpt)
+      env GROUP=${GROUP-group$i} /bin/bash -c 'mpirun -n $MODEL_SHARDS --allow-run-as-root python examples/pytorch/gpt/app/serving_opt_multi_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --tensor_para_size $MODEL_SHARDS --ckpt_path /home/user/.together/models/$MODEL' &
+    ;;
+    *)
+      echo Unknown MODEL_TYPE
+      exit 1
+    ;;
+  esac
+  exit 0
+fi
+
 count=0
 for i in ${DEVICES//,/$IFS}; do
   case ${MODEL_TYPE-gptj} in
     gpt)
-      if [ "$MODEL_SHARDS" -gt 1 ]; then
-        env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gpt/app/serving_opt_multi_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --tensor_para_size $MODEL_SHARDS --ckpt_path /home/user/.together/models/$MODEL' &
-      else
-        env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python /workspace/Port_FasterTransformer/examples/pytorch/gpt/app/serving_opt_single_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --ckpt_path --ckpt_path /home/user/.together/models/$MODEL' &
-      fi
+      env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gpt/app/serving_opt_single_gpu.py --together_model_name Together-$MODEL_BASE --hf_model_name facebook/$MODEL_BASE --ckpt_path --ckpt_path /home/user/.together/models/$MODEL' &
     ;;
     gptj)
       env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gptj/app/serving.py --ckpt_path /home/user/.together/models/$MODEL' &

@@ -5,3 +5,4 @@ worker:
     alloc: each
   command: /workspace/Port_FasterTransformer/serve.sh
   model_url: https://together-modelhub.s3.us-west-2.amazonaws.com/{{.MODEL}}
+  env: HF_HOME=/home/user/.together/models

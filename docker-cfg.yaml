@@ -11,4 +11,4 @@ worker:
   network:
     mode: host
   command: ./serve.sh
-  env: NUM_WORKERS=1
+  env: NUM_WORKERS=1 HF_HOME=/home/user/.together/models
