@@ -241,17 +241,21 @@ class GPTJ(nn.Module):
         print(f"<GPTJ>:__init__: init weight ends. init takes {end_time - start_time} seconds.")
 
         # Prepare for tensor/pipeline parallel
-        try:
-            if not dist.is_initialized():
-                dist.init_process_group(backend='mpi')
-        except:
-            print("[INFO] WARNING: Have initialized the process group")
-        self.rank = dist.get_rank()
+        if self.tensor_para_size == 1 and self.pipeline_para_size == 1:
+            self.rank = 0
+            world_size = 1
+        else:
+            try:
+                if not dist.is_initialized():
+                    dist.init_process_group(backend='mpi')
+            except:
+                print("[INFO] WARNING: Have initialized the process group")
+            self.rank = dist.get_rank()
+            world_size = dist.get_world_size()            
         self.device_count = torch.cuda.device_count()
         self.device = device_index if device_index is not None else self.rank % self.device_count
         torch.cuda.set_device(self.device)
 
-        world_size = dist.get_world_size()
         assert world_size == tensor_para_size * pipeline_para_size, \
             f"tensor_para_size({tensor_para_size}) * pipeline_para_size({pipeline_para_size}) " \
             f"must be equal to world_size({world_size})."
