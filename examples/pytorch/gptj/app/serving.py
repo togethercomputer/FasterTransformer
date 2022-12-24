@@ -218,13 +218,13 @@ class FastGPTJTInference(FastInferenceInterface):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--together_model_name', type=str, default=os.environ.get('MODEL', 'Together-gpt-JT-6B-v1'),
+    parser.add_argument('--together_model_name', type=str, default=os.environ.get('SERVICE', 'Together-gpt-JT-6B-v1'),
                         help='worker name for together coordinator.')
     parser.add_argument('--hf_model_name', type=str, default='togethercomputer/GPT-JT-6B-v1',
                         help='hugging face model name (used to load config).')
-    parser.add_argument('--ckpt_path', type=str, default='/workspace/Port_FasterTransformer/build/model/GPT-JT-6B-v1-tp1/1-gpu',
+    parser.add_argument('--ckpt_path', type=str, default='/workspace/Port_FasterTransformer/build/model/GPT-JT-6B-v1-tp1',
                         help='path to the checkpoint file.')
-    parser.add_argument('--worker_name', type=str, default='worker1',
+    parser.add_argument('--worker_name', type=str, default=os.environ.get('WORKER','worker1'),
                         help='worker name for together coordinator.')
     parser.add_argument('--group_name', type=str, default=os.environ.get('GROUP', 'group1'),
                         help='group name for together coordinator.')
