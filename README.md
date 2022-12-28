@@ -4,13 +4,12 @@ To bring up a standalone node:
 
 ```console
 mkdir .together
-docker run --rm --gpus all \
+docker run --rm --gpus all --ipc=host \
   -e NUM_WORKERS=auto \
   -e CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
   -v $PWD/.together:/home/user/.together \
   -it togethercomputer/fastertransformer /usr/local/bin/together start \
-    --color --config /home/user/cfg.yaml \
-    --worker.model GPT-JT-6B-v1-tp1 --worker.model_type gptj
+    --color --config /home/user/cfg.yaml --worker.model GPT-JT-6B-v1-tp1
 ```
 
 ```console
@@ -18,8 +17,7 @@ docker run --rm --gpus '"device=3,4"' --ipc=host \
   -e NUM_WORKERS=auto \
   -v $PWD/.together:/home/user/.together \
   -it togethercomputer/fastertransformer /usr/local/bin/together start \
-    --color --config /home/user/cfg.yaml \
-    --worker.model opt-13b-tp2 --worker.model_type gpt
+    --color --config /home/user/cfg.yaml --worker.model opt-13b-tp2
 ```
 
 # Development commands
