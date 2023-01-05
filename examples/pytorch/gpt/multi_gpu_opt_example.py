@@ -182,7 +182,7 @@ def main():
         # Generate tokens.
         # Inputs
         # for batch_size in [1, 16]:
-        for batch_size in [1]:
+        for batch_size in [1, 16]:
             contexts = []
             if args.sample_input_file:  # conditional case
                 with open(args.sample_input_file, "r") as f:
@@ -200,7 +200,7 @@ def main():
                 random_seed_tensor = torch.zeros([batch_size], dtype=torch.int64)
             
             # for output_len in [1, 32, 64, 128]:
-            for output_len in [1, 32]:
+            for output_len in [1, 32, 64, 128]:
                 print("========================= opt-input-data: =======================")
                 # print(f"start_ids: {start_ids.shape}")
                 # print(f"start_lengths: {start_lengths.shape}")
