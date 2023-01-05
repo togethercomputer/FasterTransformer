@@ -90,6 +90,13 @@ def main():
                              'A value of 0.0 deactivate the optimization')
 
     args = parser.parse_args()
+    
+    try:
+        if not dist.is_initialized():
+            dist.init_process_group(backend='mpi')
+        print(f"Initialized MPI world-size: {dist.get_world_size()}")
+    except:
+        print("[INFO] WARNING: Have initialized the process group")
 
     if args.hf_model_name == 'facebook/opt-175b':
         hf_config = vars(AutoConfig.from_pretrained('facebook/opt-66b'))
@@ -97,14 +104,14 @@ def main():
         layer_num = 96
         max_seq_len = 2048
         size_per_head = 128
-        tokenizer = AutoTokenizer.from_pretrained('facebook/opt-66b')
+        tokenizer = AutoTokenizer.from_pretrained('facebook/opt-66b', use_fast=False)
     else:
         hf_config = vars(AutoConfig.from_pretrained(args.hf_model_name))
         head_num = hf_config['num_attention_heads']
         layer_num = hf_config['num_hidden_layers']
         max_seq_len = hf_config['max_position_embeddings']
         size_per_head = hf_config['hidden_size'] // head_num
-        tokenizer = AutoTokenizer.from_pretrained(args.hf_model_name)
+        tokenizer = AutoTokenizer.from_pretrained(args.hf_model_name, use_fast=False)
     
     start_id = hf_config['bos_token_id']
     end_id = hf_config['eos_token_id']  
@@ -174,7 +181,7 @@ def main():
         # Generate tokens.
         # Inputs
         # for batch_size in [1, 16]:
-        for batch_size in [1, 16]:
+        for batch_size in [1]:
             contexts = []
             if args.sample_input_file:  # conditional case
                 with open(args.sample_input_file, "r") as f:
@@ -191,8 +198,8 @@ def main():
             else:
                 random_seed_tensor = torch.zeros([batch_size], dtype=torch.int64)
             
-            # for output_len in [32, 64, 128]:
-            for output_len in [1, 32, 64, 128]:
+            # for output_len in [1, 32, 64, 128]:
+            for output_len in [1, 32]:
                 print("========================= opt-input-data: =======================")
                 # print(f"start_ids: {start_ids.shape}")
                 # print(f"start_lengths: {start_lengths.shape}")
