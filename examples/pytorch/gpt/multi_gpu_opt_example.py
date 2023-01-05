@@ -93,8 +93,9 @@ def main():
     
     try:
         if not dist.is_initialized():
+            print("PyTorch Init Dist.")
             dist.init_process_group(backend='mpi')
-        print(f"Initialized MPI world-size: {dist.get_world_size()}")
+        print(f"Initialized MPI world-size: {dist.get_world_size()}, rank: {dist.get_rank()}")
     except:
         print("[INFO] WARNING: Have initialized the process group")
 
