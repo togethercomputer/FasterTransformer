@@ -218,7 +218,7 @@ if __name__ == "__main__":
     parser.add_argument('--pipeline_para_size', type=int, default=1,
                         help='pipeline parallel size')
     args = parser.parse_args()
-    coord_url = os.environ.get("COORD_URL", "127.0.0.1")
+    coord_url = os.environ.get("COORD_URL", "localhost")
     
     coordinator = TogetherWeb3(
         TogetherClientOptions(reconnect=True),

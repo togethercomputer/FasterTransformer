@@ -3,7 +3,7 @@ import sys
 import torch
 import timeit
 from typing import Dict
-from together_worker.fast_inference import FastInferenceInterface
+from together_worker.fast_inference import FastInferenceInterface, parse_request_prompts
 from together_web3.computer import RequestTypeLanguageModelInference
 from together_web3.together import TogetherWeb3, TogetherClientOptions
 from transformers import AutoTokenizer, AutoConfig
@@ -111,12 +111,12 @@ class FastGPTJTInference(FastInferenceInterface):
         torch.cuda.empty_cache()
         print(f"<FastGPTJInference.__init__> initialization done")
 
-    def dispatch_request(self, args, env) -> Dict:
+    def dispatch_request(self, request, env) -> Dict:
         print(f"<FastGPTJInference.dispatch_request> starts")
-        args = args[0]
-        args = {k: v for k, v in args.items() if v is not None}
+        args = {k: v for k, v in request[0].items() if v is not None}
         # Inputs
-        self.task_info["prompt_seqs"] = [str(args['prompt'])]
+        self.task_info["request"] = request
+        self.task_info["prompt_seqs"] = parse_request_prompts(request)
         self.task_info["output_len"] = get_int(args.get("max_tokens", 16), default=16)
         self.task_info["beam_width"] = get_int(args.get("beam_width", 1), default=1)
         self.task_info["top_k"] = get_int(args.get("top_k", 50), default=50)
@@ -193,8 +193,8 @@ class FastGPTJTInference(FastInferenceInterface):
         inferenece_result = []
         tokens_batch = tokens_batch.cpu().numpy()
         
+        item = {'choices': [], }
         for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
-            item = {'choices': [], }
             for beam_id in range(self.task_info["beam_width"]):
                 token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
                 print(f"[INFO] raw token: {token}")
@@ -206,7 +206,7 @@ class FastGPTJTInference(FastInferenceInterface):
                     "finish_reason": "length"
                 }
             item['choices'].append(choice)
-            inferenece_result.append(item)
+        inferenece_result.append(item)
         #  So far coordinator does not support batch. 
         return {
             "result_type": RequestTypeLanguageModelInference,
@@ -228,11 +228,12 @@ if __name__ == "__main__":
                         help='worker name for together coordinator.')
     parser.add_argument('--group_name', type=str, default=os.environ.get('GROUP', 'group1'),
                         help='group name for together coordinator.')
-    
+    parser.add_argument('--max_batch_size', type=str, default=1,
+                        help='maximum batch size.')
     
     args = parser.parse_args()
-    
-    coord_url = os.environ.get("COORD_URL", "127.0.0.1")
+
+    coord_url = os.environ.get("COORD_URL", "localhost")
     
     coordinator = TogetherWeb3(
         TogetherClientOptions(reconnect=True),
@@ -246,6 +247,6 @@ if __name__ == "__main__":
         "worker_name": args.worker_name,
         "group_name": args.group_name,
         "tensor_para_size":1,
-        "max_batch_size":1
+        "max_batch_size":args.max_batch_size,
     })
     fip.start()

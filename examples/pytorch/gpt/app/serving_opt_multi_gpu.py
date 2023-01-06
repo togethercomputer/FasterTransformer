@@ -236,7 +236,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    coord_url = os.environ.get("COORD_URL", "127.0.0.1")
+    coord_url = os.environ.get("COORD_URL", "localhost")
     
     coordinator = TogetherWeb3(
         TogetherClientOptions(reconnect=True),
