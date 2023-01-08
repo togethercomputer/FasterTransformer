@@ -23,7 +23,7 @@ class FastGPTNeoxInference(FastInferenceInterface):
         #    print("{}: {}".format(arg, getattr(args, arg)))
         print("=========================================\n")
         
-        print(f"<FastGPTNeoxInference>: Group_name after super setting: <{self.group_name}>") 
+        # print(f"<FastGPTNeoxInference>: Group_name after super setting: <{self.group_name}>") 
         
         self.tensor_para_size = 1
         self.pipeline_para_size = 1
@@ -56,13 +56,14 @@ class FastGPTNeoxInference(FastInferenceInterface):
         ckpt_path = args['ckpt_path']
         self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        use_gptj_residual = True
+        use_gptj_residual = args['use_gptj_residual']
+        weights_data_type = args['weights_data_type']
         torch.manual_seed(0)
         
         # Prepare model.
         self.gptneox_model = GPTNeox(head_num, size_per_head, layer_num, vocab_size, rotary_embedding_dim, 
                 start_id, self.end_id, max_seq_len, self.tensor_para_size, self.pipeline_para_size, use_gptj_residual,
-                lib_path=lib_path, weights_data_type='fp32')
+                lib_path=lib_path, weights_data_type=weights_data_type)
    
         if not self.gptneox_model.load(ckpt_path=ckpt_path, infer_data_type='fp16'):
             print("[WARNING] Checkpoint file not found. Model loading is skipped.")
@@ -185,6 +186,10 @@ if __name__ == "__main__":
                         help='worker name for together coordinator.')
     parser.add_argument('--group_name', type=str, default='group1',
                         help='group name for together coordinator.')
+    parser.add_argument('--weights_data_type', type=str, default='fp32',
+                        help='weights_data_type. [fp16, fp32]')
+    parser.add_argument('--use_gptj_residual', action='store_true',
+                        help='whether or not to use_gptj_residual.')
     
     args = parser.parse_args()
     
@@ -202,6 +207,8 @@ if __name__ == "__main__":
         "worker_name": args.worker_name,
         "group_name": args.group_name,
         "tensor_para_size":1,
-        "max_batch_size":1
+        "max_batch_size":1,
+        "use_gptj_residual": args.use_gptj_residual,
+        "weights_data_type": args.weights_data_type
     })
     fip.start()

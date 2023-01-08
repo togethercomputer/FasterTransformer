@@ -63,6 +63,7 @@ def prefix_prompt_convert(args, config, weight_data_type):
 
 
 def split_and_convert_process(i, saved_dir,factor,key,args,config,val):
+    print(f"<split_and_convert_process> : {key}")
 
     if key.find("input_layernorm.weight") != -1 or key.find("input_layernorm.bias") != -1 or \
         key.find("attention.dense.bias") != -1 or key.find("post_attention_layernorm.weight") != -1 or \
@@ -78,7 +79,10 @@ def split_and_convert_process(i, saved_dir,factor,key,args,config,val):
         split_vals = np.split(val, factor, axis=0)
         for j in range(factor):
             saved_path = saved_dir + "/model." + key + ".%d.bin" % (i * factor + j)
-            split_vals[j].tofile(saved_path)
+            try:
+                split_vals[j].tofile(saved_path)
+            except:
+                print(f"Fail to save: {saved_dir + '/model.' + key + '.%d.bin' % (i * factor + j)}")
 
     elif key.find("mlp.dense_h_to_4h.weight") != -1 or key.find("mlp.dense_h_to_4h.bias") != -1:
 
@@ -89,7 +93,7 @@ def split_and_convert_process(i, saved_dir,factor,key,args,config,val):
 
     elif key.find("attention.query_key_value.bias") != -1:
         local_dim = (int)(val.shape[-1] / 3)
-        n_head = config['n_head']
+        n_head = config['num_attention_heads']
 
         val = val.reshape(n_head, 3, local_dim // n_head)
         val = np.transpose(val, [1, 0, 2]).reshape(3, local_dim)
@@ -102,7 +106,7 @@ def split_and_convert_process(i, saved_dir,factor,key,args,config,val):
     elif key.find("attention.query_key_value.weight") != -1:
         hidden_dim = val.shape[0]
         local_dim = (int)(val.shape[-1] / 3)
-        n_head = config['n_head']
+        n_head = config['num_attention_heads']
         # Note that the HF qkv weight are stored as [hidden_size, num_heads, 3, head_hidden]
         # FT needs the shape of [hidden_size, 3, num_heads, head_hidden]
         val = val.reshape(hidden_dim, n_head, 3, local_dim // n_head)
@@ -120,6 +124,7 @@ def split_and_convert_process(i, saved_dir,factor,key,args,config,val):
 
 def split_and_convert(args):
     saved_dir = args.saved_dir + "/%d-gpu/" % args.infer_gpu_num
+    print(f"saved_dir: {saved_dir}")
 
     if(os.path.exists(saved_dir) == False):
         os.makedirs(saved_dir)
@@ -134,6 +139,9 @@ def split_and_convert(args):
     # load position_embedding from rank 0 
     # model = torch.load(ckpt_name)
     model = GPTNeoXForCausalLM.from_pretrained(args.in_file)
+    
+    print("HF model loaded")
+    
     hf_config = vars(model.config)
     if "gpt_j_residual" not in hf_config:
         hf_config["gpt_j_residual"] = 0
@@ -144,23 +152,25 @@ def split_and_convert(args):
     if args.prompt_in_file_list is not None:
         task_list = prefix_prompt_convert(args, hf_config, np_weight_data_type)
     
-    try:
+    #try:
+    if True:
         model_name = args.model_name
         config = configparser.ConfigParser()
         config['gptneox'] = {}
         config['gptneox']['model_name'] = model_name
-        config['gptneox']["head_num"] = str(hf_config["n_head"])
-        n_embd = hf_config["n_embd"]
-        config['gptneox']["size_per_head"] = str(n_embd // hf_config["n_head"])
+        config['gptneox']["head_num"] = str(hf_config["num_attention_heads"])
+        n_embd = hf_config["hidden_size"]
+        config['gptneox']["size_per_head"] = str(n_embd // hf_config["num_attention_heads"])
         config['gptneox']["inter_size"] = str(n_embd * 4)
-        config['gptneox']["num_layer"] = str(hf_config["n_layer"])
-        rotary_dim = n_embd // hf_config["n_head"] if hf_config["rotary_dim"] is None else hf_config["rotary_dim"]
+        config['gptneox']["num_layer"] = str(hf_config["num_hidden_layers"])
+        rotary_dim = 24
         config['gptneox']["rotary_embedding"] = str(rotary_dim)
         config['gptneox']["vocab_size"] = str(hf_config["vocab_size"])
         config['gptneox']["start_id"] = str(hf_config["bos_token_id"])
         config['gptneox']["end_id"] = str(hf_config["eos_token_id"])
-        config['gptneox']['use_gptj_residual'] = str(int(hf_config['gpt_j_residual']))
+        config['gptneox']['use_gptj_residual'] = str(1)
         config['gptneox']["weight_data_type"] = args.weight_data_type
+        print(f"Config: {config}")
 
         if len(task_list) > 0:
             config['gptneox']['num_tasks'] = str(len(task_list))
@@ -169,10 +179,14 @@ def split_and_convert(args):
                 config[f'task_{idx}'] = {}
                 config[f'task_{idx}']['task_name'] = task_name
                 config[f'task_{idx}']['prompt_length'] = str(prompt_length)
-        with open((Path(saved_dir) / f"config.ini").as_posix(), 'w') as configfile:
-            config.write(configfile)
-    except:
-        print(f"Fail to save the config in config.ini.")
+        # with open((Path(saved_dir) / f"config.ini").as_posix(), 'w') as configfile:
+        #    config.write(configfile)
+        print(f"Config: {config}")
+        
+        with open(Path(saved_dir) / "config.ini", "w") as f:
+            config.write(f)
+    # except:
+    #    print(f"Fail to save the config in config.ini.")
 
     huggingface_model_name_pattern = [
         "ln_1.bias",
@@ -207,25 +221,31 @@ def split_and_convert(args):
     torch.multiprocessing.set_start_method("spawn")
     pool = multiprocessing.Pool(args.processes)
     for name, param in model.named_parameters():
+        print(name)
         if name.find("weight") == -1 and name.find("bias") == -1:
             continue
-        print(name)
-        if name == 'transformer.wpe.weight':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.wpe.bin")
-        elif name == 'transformer.wte.weight':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.wte.bin")
-        elif name == 'transformer.ln_f.bias':
+        if name == 'gpt_neox.embed_in.weight':
+            try:
+                print(f"Save: {name}")
+                param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.wte.bin")
+            except:
+                print(f"Fail to save {saved_dir + 'model.wte.bin'}.")
+        elif name == 'gpt_neox.final_layer_norm.bias':
+            print(f"Save: {name}")
             param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.final_layernorm.bias.bin")
-        elif name == 'transformer.ln_f.weight':
+        elif name == 'gpt_neox.final_layer_norm.weight':
+            print(f"Save: {name}")
             param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.final_layernorm.weight.bin")
-        elif name == 'lm_head.weight':
+        elif name == 'embed_out.weight':
+            print(f"Save: {name}")
             param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.lm_head.weight.bin")
-        elif name == 'lm_head.bias':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.lm_head.bias.bin")
         else:
-            for i in range(len(huggingface_model_name_pattern)):
-                if name.find(huggingface_model_name_pattern[i]) != -1:
-                    new_name = name.replace("transformer.h.", "layers.").replace(huggingface_model_name_pattern[i], ft_model_name_pattern[i])
+            # for i in range(len(huggingface_model_name_pattern)):
+            #    if name.find(huggingface_model_name_pattern[i]) != -1:
+            #        new_name = name.replace("transformer.h.", "layers.").replace(huggingface_model_name_pattern[i], ft_model_name_pattern[i])
+            for i in range(len(ft_model_name_pattern)):
+                if name.find(ft_model_name_pattern[i]) != -1:
+                    new_name = name.replace("gpt_neox.", "")
                     pool.starmap(split_and_convert_process,
                                 [(0, saved_dir, factor, new_name, args, vars(model.config),
                                     param.detach().cpu().numpy().astype(np_weight_data_type).T)], )
