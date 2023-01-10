@@ -42,6 +42,9 @@ if [ "$MODEL_SHARDS" -gt 1 ]; then
     gpt)
       env GROUP=${GROUP-group$i} /bin/bash -c 'mpirun -n $MODEL_SHARDS --allow-run-as-root python examples/pytorch/gpt/app/serving_opt_multi_gpu.py --hf_model_name facebook/$MODEL_BASE --tensor_para_size $MODEL_SHARDS --ckpt_path /home/user/.together/models/$MODEL'
     ;;
+    gptneox)
+      env GROUP=${GROUP-group$i} /bin/bash -c 'mpirun -n $MODEL_SHARDS --allow-run-as-root python examples/pytorch/gptneox/app/serving_multi_gpu.py --hf_model_name --ckpt_path /home/user/.together/models/$MODEL'
+    ;;
     *)
       echo Unknown MODEL_TYPE
       exit 1
@@ -58,6 +61,9 @@ for i in ${DEVICES//,/$IFS}; do
     ;;
     gptj)
       env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gptj/app/serving.py --ckpt_path /home/user/.together/models/$MODEL' &
+    ;;
+    gptneox)
+      env DEVICE=${DEVICE-cuda:$i} GROUP=${GROUP-group$i} /bin/bash -c 'python examples/pytorch/gptneox/app/serving_single_gpu.py --ckpt_path /home/user/.together/models/$MODEL' &
     ;;
     *)
       echo Unknown MODEL_TYPE
