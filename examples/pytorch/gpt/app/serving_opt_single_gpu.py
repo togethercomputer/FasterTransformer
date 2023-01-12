@@ -175,8 +175,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
-    coord_http_port = os.environ.get("COORD_HTTP_URL", "8092")
-    coord_ws_port = os.environ.get("COORD_WS_URL", "8093")
+    coord_http_port = os.environ.get("COORD_HTTP_PORT", "8092")
+    coord_ws_port = os.environ.get("COORD_WS_PORT", "8093")
 
     coordinator = TogetherWeb3(
         TogetherClientOptions(reconnect=True),
