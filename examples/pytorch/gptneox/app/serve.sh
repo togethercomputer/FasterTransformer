@@ -4,4 +4,4 @@
 
 /workspace/Port_FasterTransformer/build/model/together start &
 
-python /workspace/Port_FasterTransformer/examples/pytorch/gptneox/app/serving_single_gpu.py --ckpt_path /workspace/Port_FasterTransformer/build/model/gpt-neoxT-latest-tp1/1-gpu --weights_data_type fp16 --together_model_name together/gpt-neoxT-20B-chat-latest-FT
+python /workspace/Port_FasterTransformer/examples/pytorch/gptneox/app/serving_single_gpu.py --ckpt_path /workspace/Port_FasterTransformer/build/model/gpt-neoxT-latest-tp1/1-gpu --weights_data_type fp16 --together_model_name together/gpt-neoxT-20B-chat-latest
