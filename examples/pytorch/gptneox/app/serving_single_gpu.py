@@ -12,18 +12,23 @@ from utils.gptneox import GPTNeox
 import argparse
 from utils.text_utils import *
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(int(os.environ.get('LOG_LEVEL', logging.DEBUG)))
+
 
 class FastGPTNeoxInference(FastInferenceInterface):
     def __init__(self, model_name: str, args=None) -> None:
         super().__init__(model_name, args if args is not None else {})
-        print("\n=============== Arguments ===============")
-        print(args.keys())
-        print(args)
+        logging.debug("\n=============== Arguments ===============")
+        logging.debug(args.keys())
+        logging.debug(args)
         #for key in args.keys():
-        #    print("{}: {}".format(arg, getattr(args, arg)))
-        print("=========================================\n")
+        #    logging.debug("{}: {}".format(arg, getattr(args, arg)))
+        logging.debug("=========================================\n")
         
-        # print(f"<FastGPTNeoxInference>: Group_name after super setting: <{self.group_name}>") 
+        # logging.debug(f"<FastGPTNeoxInference>: Group_name after super setting: <{self.group_name}>") 
         
         self.tensor_para_size = 1
         self.pipeline_para_size = 1
@@ -56,6 +61,7 @@ class FastGPTNeoxInference(FastInferenceInterface):
         ckpt_path = args['ckpt_path']
         self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
         self.tokenizer.pad_token = self.tokenizer.eos_token
+        # use_gptj_residual = True use true for EleutherAI model;
         use_gptj_residual = args['use_gptj_residual']
         weights_data_type = args['weights_data_type']
         torch.manual_seed(0)
@@ -66,12 +72,12 @@ class FastGPTNeoxInference(FastInferenceInterface):
                 lib_path=lib_path, weights_data_type=weights_data_type)
    
         if not self.gptneox_model.load(ckpt_path=ckpt_path, infer_data_type='fp16'):
-            print("[WARNING] Checkpoint file not found. Model loading is skipped.")
+            logging.debug("[WARNING] Checkpoint file not found. Model loading is skipped.")
         torch.cuda.empty_cache()
-        print(f"<FastGPTNeoxInference.__init__> initialization done")
+        logging.debug(f"<FastGPTNeoxInference.__init__> initialization done")
 
     def dispatch_request(self, args, env) -> Dict:
-        print(f"<FastGPTNeoxInference.dispatch_request> starts")
+        logging.debug(f"<FastGPTNeoxInference.dispatch_request> starts")
         args = args[0]
         args = {k: v for k, v in args.items() if v is not None}
         # Inputs
@@ -104,16 +110,16 @@ class FastGPTNeoxInference(FastInferenceInterface):
                 "choices": inferenece_result[0]['choices'],
                 "raw_compute_time": 0.0
             }
-            print(f"<FastGPTNeoxInference.dispatch_request> (not FT runs, 0 input or output) return: {result}")
+            logging.debug(f"<FastGPTNeoxInference.dispatch_request> (not FT runs, 0 input or output) return: {result}")
             return result
         else:
             result = self._run_inference()
             torch.cuda.empty_cache()
-            print(f"<FastGPTNeoxInference.dispatch_request> return: {result}")
+            logging.debug(f"<FastGPTNeoxInference.dispatch_request> return: {result}")
             return result
 
     def _run_inference(self):
-        print(f"<FastGPTNeoxInference._run_inference> start.")
+        logging.debug(f"<FastGPTNeoxInference._run_inference> start.")
         
         with torch.no_grad():
             contexts = self.task_info["prompt_seqs"]
@@ -122,11 +128,11 @@ class FastGPTNeoxInference(FastInferenceInterface):
             
             start_ids = pad_sequence(start_ids, batch_first=True, padding_value=self.end_id)
             start_lengths = torch.IntTensor(start_lengths)
-            print(f"start_ids: length ({start_ids.shape[0]}) ids: {start_ids}")
+            logging.debug(f"start_ids: length ({start_ids.shape[0]}) ids: {start_ids}")
             
             time = timeit.default_timer()
             max_batch_size = self.max_batch_size
-            print(self.task_info)
+            logging.debug(self.task_info)
             tokens_batch = self.gptneox_model(start_ids,
                                     start_lengths,
                                     self.task_info["output_len"],
@@ -140,14 +146,14 @@ class FastGPTNeoxInference(FastInferenceInterface):
                                     self.random_seed_tensor)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
-        print(f"[INFO] GPTNeox time costs: {time_elapsed} ms. ")
+        logging.debug(f"[INFO] GPTNeox time costs: {time_elapsed} ms. ")
         
 
         assert tokens_batch is not None
         
         if self.task_info["return_cum_log_probs"] > 0:
             tokens_batch, _, cum_log_probs = tokens_batch
-            print('[INFO] Log probs of sentences:', cum_log_probs)
+            logging.debug('[INFO] Log probs of sentences:', cum_log_probs)
 
         inferenece_result = []
         tokens_batch = tokens_batch.cpu().numpy()
@@ -156,9 +162,9 @@ class FastGPTNeoxInference(FastInferenceInterface):
             item = {'choices': [], }
             for beam_id in range(self.task_info["beam_width"]):
                 token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                print(f"[INFO] raw token: {token}")
+                logging.debug(f"[INFO] raw token: {token}")
                 output = self.tokenizer.decode(token)
-                print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
+                logging.debug(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
                 choice = {
                     "text": post_processing_text(output, self.task_info["stop"]),
                     "index": beam_id,
@@ -188,7 +194,7 @@ if __name__ == "__main__":
                         help='group name for together coordinator.')
     parser.add_argument('--weights_data_type', type=str, default='fp32',
                         help='weights_data_type. [fp16, fp32]')
-    parser.add_argument('--use_gptj_residual', action='store_true',
+    parser.add_argument('--use_gptj_residual', action='store_true', 
                         help='whether or not to use_gptj_residual.')
     
     args = parser.parse_args()
@@ -208,7 +214,7 @@ if __name__ == "__main__":
         "group_name": args.group_name,
         "tensor_para_size":1,
         "max_batch_size":1,
-        "use_gptj_residual": args.use_gptj_residual,
+        "use_gptj_residual": True, # args.use_gptj_residual
         "weights_data_type": args.weights_data_type
     })
     fip.start()
