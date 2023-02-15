@@ -26,9 +26,13 @@ def _profiling_torch_tensor_memory():
     print(f"<profiling_torch_tensor_memory>: total HBM of torch tensors: {total_size/1073741824} GB.")
 
 
+str_type_map = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
+
 class GPTNeoxWeights(object):
     def __init__(self, head_num, size_per_head, layer_num, vocab_size, max_seq_len, tensor_para_size,
-                 pipeline_para_size, use_gptj_residual, weights_data_type=typing.Union[str, np.float16]):
+                 pipeline_para_size, use_gptj_residual, 
+                 weights_data_type=typing.Union[str, np.float16],
+                 inference_data_type:str="fp16"):
         assert (head_num % tensor_para_size == 0)
         self.head_num = head_num
         self.size_per_head = size_per_head
@@ -51,6 +55,8 @@ class GPTNeoxWeights(object):
         self.global_hidden_units = global_hidden_units
         self.local_inter_size = local_inter_size
         self.use_gptj_residual = use_gptj_residual
+        self.inference_data_type = inference_data_type
+        
 
         if isinstance(weights_data_type, str):
             try:
@@ -69,38 +75,54 @@ class GPTNeoxWeights(object):
         self.w = []
         # Transformer blocks
         # self_pre_layernorm_gamma
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_pre_layernorm_beta
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_attention_kernel (k, q, v)
-        self.w.extend([torch.zeros(global_hidden_units, local_hidden_units * 3, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, local_hidden_units * 3, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_attention_bias (k, q, v) 
-        self.w.extend([torch.zeros(local_hidden_units * 3, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(local_hidden_units * 3, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_output_kernel
-        self.w.extend([torch.zeros(local_hidden_units, global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(local_hidden_units, global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_output_bias
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # ffn_kernel1
-        self.w.extend([torch.zeros(global_hidden_units, local_inter_size, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, local_inter_size, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # ffn_bias1 
-        self.w.extend([torch.zeros(local_inter_size, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(local_inter_size, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # ffn_kernel2
-        self.w.extend([torch.zeros(local_inter_size, global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(local_inter_size, global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # ffn_bias2
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_post_attention_layernorm_gamma
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         # self_post_attention_layernorm_beta
-        self.w.extend([torch.zeros(global_hidden_units, dtype=torch.float16)] * layer_num)
+        self.w.extend([torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type])] * layer_num)
         
         # After Transformer blocks wte
-        self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=torch.float16))
+        self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=str_type_map[
+            self.inference_data_type]))
         # After Transformer blocks 1 layernorm_gamma
-        self.w.append(torch.zeros(global_hidden_units, dtype=torch.float16))
+        self.w.append(torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type]))
         # After Transformer blocks 1 layernorm_beta
-        self.w.append(torch.zeros(global_hidden_units, dtype=torch.float16))
+        self.w.append(torch.zeros(global_hidden_units, dtype=str_type_map[
+            self.inference_data_type]))
         # After Transformer blocks lm kernel
-        self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=torch.float16))
+        self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=str_type_map[
+            self.inference_data_type]))
 
         # Initialization
         # self._map(lambda w: torch.nn.init.normal_(w, mean=0., std=1.))
@@ -238,7 +260,8 @@ class GPTNeox(nn.Module):
                  tensor_para_size, pipeline_para_size,
                  use_gptj_residual,
                  lib_path,
-                 weights_data_type: np.dtype = np.float16):
+                 weights_data_type: np.dtype = np.float16,
+                 inference_data_type:str="fp16"):
         super().__init__()
         self.head_num = head_num
         self.size_per_head = size_per_head
@@ -254,6 +277,7 @@ class GPTNeox(nn.Module):
         self.use_sparse_gemm = False
         self.build_model = False
         self.weights_data_type = weights_data_type
+        self.inference_data_type = inference_data_type
 
         assert torch.cuda.is_available(), "CUDA is required for this model."
 
@@ -270,7 +294,7 @@ class GPTNeox(nn.Module):
         print(f"<GPTNeox>:__init__: init weight starts.")
         start_time = time.time()
         self.weights = GPTNeoxWeights(head_num, size_per_head, layer_num, vocab_size, max_seq_len, tensor_para_size,
-                                      pipeline_para_size, use_gptj_residual, weights_data_type)
+                                      pipeline_para_size, use_gptj_residual, weights_data_type, inference_data_type)
         end_time = time.time()
         _profiling_torch_tensor_memory()
         print(f"<GPTNeox>:__init__: init weight ends. init takes {end_time - start_time} seconds.")

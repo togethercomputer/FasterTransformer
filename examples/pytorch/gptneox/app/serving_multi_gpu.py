@@ -62,20 +62,23 @@ class FastGPTNeoxTPInference(FastInferenceInterface):
         self.end_id = hf_config['eos_token_id']
         size_per_head = hf_config['hidden_size'] // head_num
         vocab_size = hf_config['vocab_size']
-        max_seq_len = hf_config['max_position_embeddings']
         rotary_embedding_dim = 24
+        max_seq_len = hf_config['max_position_embeddings']
         lib_path ='/workspace/Port_FasterTransformer/build/lib/libth_gptneox.so'
         ckpt_path = args['ckpt_path']
         self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_name'])
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        use_gptj_residual = True
+        use_gptj_residual = args['use_gptj_residual']
+        weights_data_type = args['weights_data_type']
+        infer_data_type = args['infer_data_type']
         torch.manual_seed(0)
         
         # Prepare model.
         self.gptneox_model = GPTNeox(head_num, size_per_head, layer_num, vocab_size, rotary_embedding_dim, 
             start_id, self.end_id, max_seq_len, self.tensor_para_size, self.pipeline_para_size, use_gptj_residual,
-            lib_path=lib_path, weights_data_type='fp32')
-        if not self.gptneox_model.load(ckpt_path=ckpt_path, infer_data_type='fp16'):
+            lib_path=lib_path, weights_data_type=weights_data_type, inference_data_type=infer_data_type)
+        
+        if not self.gptneox_model.load(ckpt_path=ckpt_path, infer_data_type=infer_data_type):
             print("[WARNING] Checkpoint file not found. Model loading is skipped.")
         torch.cuda.empty_cache()
         print(f"<FastGPTNeoxTPInference.__init__> rank {dist.get_rank()} initialization done")
@@ -217,6 +220,12 @@ if __name__ == "__main__":
                         help='tensor parallel size')
     parser.add_argument('--pipeline_para_size', type=int, default=1,
                         help='pipeline parallel size')
+    parser.add_argument('--weights_data_type', type=str, default='fp32',
+                        help='weights_data_type. [fp16, fp32]')
+    parser.add_argument('--infer_data_type', type=str, default='fp32',
+                        help='infer_data_type. [fp16, fp32]')
+    parser.add_argument('--use_gptj_residual', action='store_true', 
+                        help='whether or not to use_gptj_residual.')
     args = parser.parse_args()
     coord_url = os.environ.get("COORD_URL", "127.0.0.1")
     
@@ -232,10 +241,9 @@ if __name__ == "__main__":
         "worker_name": args.worker_name,
         "group_name": args.group_name,
         "tensor_para_size":args.tensor_para_size,
-        "max_batch_size":args.pipeline_para_size
+        "max_batch_size":1,
+        "use_gptj_residual": True, # args.use_gptj_residual
+        "weights_data_type": args.weights_data_type,
+        "infer_data_type": args.infer_data_type
     })
     fip.start()
-    
-
-if __name__ == '__main__':
-    main()
