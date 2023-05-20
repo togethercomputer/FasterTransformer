@@ -16,3 +16,5 @@ __pycache__/
 
 /3rdparty/NeMo/
 /3rdparty/apex/
+examples/pytorch/gptneox/sample_output.txt
+examples/pytorch/gptneox/sample_input.txt

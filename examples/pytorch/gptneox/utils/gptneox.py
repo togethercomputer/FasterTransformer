@@ -99,7 +99,7 @@ class GptNeoXWeights(object):
         self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=self.inference_data_type))                             # post_decoder_embedding.kernel
 
         # Initialization
-        self._map(lambda w: torch.nn.init.normal_(w, mean=0., std=0.01))
+        # self._map(lambda w: torch.nn.init.normal_(w, mean=0., std=0.01))
 
     def __getitem__(self, idx):
         return self.w[idx]
