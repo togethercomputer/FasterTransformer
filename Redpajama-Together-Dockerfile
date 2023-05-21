@@ -7,7 +7,7 @@ RUN mkdir -p build && \
     cmake -DSM=xx -DCMAKE_BUILD_TYPE=Release -DBUILD_PYT=ON -DBUILD_MULTI_GPU=ON .. && \
     make -j 64
 
-RUN pip install -r ./examples/pytorch/gpt/requirement.txt
+RUN pip install -r ./examples/pytorch/gptneox/requirement.txt
 
 RUN wget https://together-distro-packages.s3.us-west-2.amazonaws.com/linux/x86_64/bin/together-node-latest -O /usr/local/bin/together-node && \
     chmod +x /usr/local/bin/together-node
