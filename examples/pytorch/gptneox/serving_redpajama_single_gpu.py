@@ -1,6 +1,7 @@
 import os
 from typing import Dict
 import argparse
+import configparser
 import timeit
 import logging
 import numpy as np
@@ -8,7 +9,6 @@ from together_worker.fast_inference import FastInferenceInterface
 from together_web3.computer import RequestTypeLanguageModelInference
 from together_web3.together import TogetherWeb3, TogetherClientOptions
 import torch
-import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoConfig
 from utils.gptneox import GptNeoX
@@ -60,16 +60,11 @@ def post_processing_text(output_text, stop_tokens):
 
 class FastRedPajamaInference(FastInferenceInterface):
     def __init__(self, model_name: str, args=None) -> None:
-        try:
-            if not dist.is_initialized():
-                dist.init_process_group(backend='mpi')
-        except:
-            print("[INFO] WARNING: Have initialized the process group")
         
-        args['worker_name'] = 'worker'+str(dist.get_rank())
-        args['workers'] = dist.get_world_size()
-        args['rank'] = dist.get_rank()
-        args['world_size'] = dist.get_world_size()
+        args['worker_name'] = 'worker0'
+        args['workers'] = 1
+        args['rank'] = 0
+        args['world_size'] = 1
         
         super().__init__(model_name, args if args is not None else {})
         print("\n=============== Arguments ===============")
@@ -96,50 +91,39 @@ class FastRedPajamaInference(FastInferenceInterface):
             "return_output_length":0,
         }
         
-
-        hf_config = vars(AutoConfig.from_pretrained(args['hf_model_path']))
-        head_num = hf_config['num_attention_heads']
-        layer_num = hf_config['n_layer']
-        size_per_head = hf_config['n_embed'] // head_num
-        self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_path'], use_fast=False)
-        start_id = self.tokenizer.bos_token_id
-        self.end_id = self.tokenizer.eos_token_id
-        vocab_size = hf_config['vocab_size']
-        layernorm_eps = 1e-5
+        self.tokenizer = AutoTokenizer.from_pretrained(args['hf_model_path'], use_fast=True)
+        config = configparser.ConfigParser()
+        config.read(os.path.join(args['ckpt_path'], "config.ini"))
+        head_num = int(config.get('gptneox', 'head_num'))
+        size_per_head = int(config.get('gptneox', 'size_per_head'))
+        vocab_size = int(config.get('gptneox', 'vocab_size'))
+        layer_num = int(config.get('gptneox', 'num_layer'))
+        rotary_embedding = int(config.get('gptneox', 'rotary_embedding'))
+        start_id = int(config.get('gptneox', 'start_id'))
+        self.end_id = int(config.get('gptneox', 'end_id'))
+        use_gptj_residual = (config.get('gptneox', 'use_gptj_residual') == "1")
+        weight_data_type = config.get('gptneox', 'weight_data_type')
         lib_path = args["lib_path"]
         ckpt_path = args['ckpt_path']
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        max_seq_len = 2048
+
         torch.manual_seed(0)
         with torch.no_grad():
             # Prepare model.
             self.redpajama_model = GptNeoX(head_num, size_per_head, 
-                        vocab_size, start_id, self.end_id, layer_num,
-                        self.tensor_para_size, 
-                        self.pipeline_para_size, 
-                        lib_path,
-                        inference_data_type="fp16",
-                        weights_data_type=np.float16,
-                        layernorm_eps=layernorm_eps,
-                        int8_mode=0)
+                                           vocab_size, rotary_embedding,
+                                           start_id, self.end_id, layer_num, max_seq_len, 
+                                           self.tensor_para_size, self.pipeline_para_size, 
+                                           use_gptj_residual, lib_path, 
+                                           inference_data_type=weight_data_type, 
+                                           weights_data_type=weight_data_type)
             if not self.redpajama_model.load(ckpt_path=ckpt_path):
                 print("[WARNING] Checkpoint file not found. Model loading is skipped.")
                
-        print(f"<FastRedPajamaInference.__init__> rank {dist.get_rank()} initialization done")
+        print(f"<FastRedPajamaInference.__init__> initialization done")
 
-    def _sync_task_info(self):
-        print(f"<FastRedPajamaInference._sync_task_info> enter rank-<{dist.get_rank()}>")
-        dist.barrier()
-        if dist.get_rank() == 0:
-            dist.broadcast_object_list([self.task_info], src=0)
-        else:
-            info = [None]
-            torch.distributed.broadcast_object_list(info, src=0)
-            self.task_info = info[0]
-        dist.barrier()
-        print(f"<FastRedPajamaInference._sync_task_info> leave rank-<{dist.get_rank()}, task_info:{self.task_info}>")
         
     def dispatch_request(self, args, env) -> Dict:
-        print(f"Rank {dist.get_rank()} get {args}")
         args = args[0]
         args = {k: v for k, v in args.items() if v is not None}
         # Inputs
@@ -178,13 +162,12 @@ class FastRedPajamaInference(FastInferenceInterface):
             print(f"<FastRedPajamaInference.dispatch_request> (not FT runs, 0 input or output) return: {result}")
             return result
         else:
-            self._sync_task_info()
             result = self._run_inference()
             print(f"<FastRedPajamaInference.dispatch_request> return: {result}")
             return result
 
     def _run_inference(self):
-        print(f"<FastRedPajamaInference._run_inference> enter rank-<{dist.get_rank()}>")
+        print(f"<FastRedPajamaInference._run_inference> enter")
         
         with torch.no_grad():
             contexts = self.task_info["prompt_seqs"]
@@ -197,63 +180,55 @@ class FastRedPajamaInference(FastInferenceInterface):
             
             time = timeit.default_timer()
             max_batch_size = self.max_batch_size
-            tokens_batch = self.redpajama_model(start_ids,
-                                    start_lengths,
-                                    self.task_info["output_len"],
-                                    self.task_info["beam_width"],
-                                    self.task_info["top_k"] * torch.ones(size=[max_batch_size], dtype=torch.int32),
-                                    self.task_info["top_p"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                                    self.task_info["beam_search_diversity_rate"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                                    self.task_info["temperature"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                                    self.task_info["len_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
-                                    self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
+            tokens_batch = self.redpajama_model(
+                                    start_ids=start_ids,
+                                    start_lengths=start_lengths,
+                                    output_len=self.task_info["output_len"],
+                                    beam_width=self.task_info["beam_width"],
+                                    top_k=self.task_info["top_k"] * torch.ones(size=[max_batch_size], dtype=torch.int32),
+                                    top_p=self.task_info["top_p"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
+                                    beam_search_diversity_rate=self.task_info["beam_search_diversity_rate"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
+                                    temperature=self.task_info["temperature"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
+                                    len_penalty=self.task_info["len_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
+                                    repetition_penalty=self.task_info["repetition_penalty"] * torch.ones(size=[max_batch_size], dtype=torch.float32),
                                     random_seed = self.random_seed_tensor,
-                                    bad_words_list = None,
                                     return_output_length = self.task_info["return_output_length"],
                                     return_cum_log_probs = self.task_info["return_cum_log_probs"],
                                     request_id=self.served,
                                     stream_tokens_pipe = self.stream_tokens_pipe_w if self.task_info["stream_tokens"] else -1)
             # only a thread (rank 0) gets the output, while the others are supposed to return None.
             time_elapsed = timeit.default_timer() - time
-        print("[INFO] Redpajama time costs: {:.2f} ms. <rank-{}>".format(time_elapsed * 1000, dist.get_rank()))
+        print("[INFO] Redpajama time costs: {:.2f} ms.>".format(time_elapsed * 1000))
         
-        if dist.get_rank() == 0:
-            assert tokens_batch is not None
-        
-            if self.task_info["return_cum_log_probs"] > 0:
-                tokens_batch, _, cum_log_probs = tokens_batch
-                print('[INFO] Log probs of sentences:', cum_log_probs)
+        assert tokens_batch is not None
+    
+        if self.task_info["return_cum_log_probs"] > 0:
+            tokens_batch, _, cum_log_probs = tokens_batch
+            print('[INFO] Log probs of sentences:', cum_log_probs)
 
-            inferenece_result = []
-            tokens_batch = tokens_batch.cpu().numpy()
-            
-            for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
-                item = {'choices': [], }
-                for beam_id in range(self.task_info["beam_width"]):
-                    token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
-                    output = self.tokenizer.decode(token)
-                    print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
-                    choice = {
-                        "text": post_processing_text(output, self.task_info["stop"]),
-                        "index": beam_id,
-                        "finish_reason": "length"
-                    }
-                item['choices'].append(choice)
-                inferenece_result.append(item)
-            #  So far coordinator does not support batch. 
-            return {
-                "result_type": RequestTypeLanguageModelInference,
-                "choices": inferenece_result[0]['choices'],
-                "raw_compute_time": time_elapsed
-            }
-        else:
-            return None
+        inferenece_result = []
+        tokens_batch = tokens_batch.cpu().numpy()
         
-    def worker(self):
-        while True:
-            self._sync_task_info()
-            self._run_inference()
-        
+        for i, (context, tokens) in enumerate(zip(self.task_info["prompt_seqs"], tokens_batch)):
+            item = {'choices': [], }
+            for beam_id in range(self.task_info["beam_width"]):
+                token = tokens[beam_id][start_lengths[i]:]  # exclude context input from the output
+                output = self.tokenizer.decode(token)
+                print(f"[INFO] batch {i}, beam {beam_id}: \n[Context]\n{context}\n\n[Output]\n{output}\n")
+                choice = {
+                    "text": post_processing_text(output, self.task_info["stop"]),
+                    "index": beam_id,
+                    "finish_reason": "length"
+                }
+            item['choices'].append(choice)
+            inferenece_result.append(item)
+        #  So far coordinator does not support batch. 
+        return {
+            "result_type": RequestTypeLanguageModelInference,
+            "choices": inferenece_result[0]['choices'],
+            "raw_compute_time": time_elapsed
+        }
+
 
 if __name__ == "__main__":
     
@@ -293,7 +268,7 @@ if __name__ == "__main__":
         "ckpt_path": args.ckpt_path,
         "lib_path": args.lib_path,
         "tensor_para_size":args.tensor_para_size,
-        "stream_tokens_pipe": True,
+        "stream_tokens_pipe": False,
         "gpu_num": 1,
         "gpu_type": "A100-40G",
         "gpu_mem": 8000000,
