@@ -211,7 +211,7 @@ class FastBloomInference(FastInferenceInterface):
                                     presence_penalty = None,
                                     min_length = None,
                                     random_seed = self.random_seed_tensor,
-                                    bad_words_list = to_word_list_format(np.array([self.task_info["stop"]])) if self.task_info["stop"] else None,
+                                    bad_words_list = torch.Tensor(to_word_list_format(np.array([self.task_info["stop"]]), self.tokenizer)).int().to("cuda") if self.task_info["stop"] else None,
                                     return_output_length = self.task_info["return_output_length"],
                                     return_cum_log_probs = self.task_info["return_cum_log_probs"],
                                     request_id=self.served,
