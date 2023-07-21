@@ -234,9 +234,9 @@ if __name__ == "__main__":
     
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--together_model_name', type=str, default=os.environ.get('SERVICE', 'Together-RedPajama-INCITE-Chat-7B-v0.1'),
+    parser.add_argument('--together_model_name', type=str, default=os.environ.get('SERVICE', 'Together-RedPajama-INCITE-7B-Chat'),tog
                         help='worker name for together coordinator.')
-    parser.add_argument('--ckpt_path', type=str, default='/workspace/FasterTransformer/build/model/ft-RedPajama-INCITE-Chat-7B-v0.1/1-gpu',
+    parser.add_argument('--ckpt_path', type=str, default='/workspace/FasterTransformer/build/model/ft-RedPajama-INCITE-7B-Chat/1-gpu',
                         help='path to the checkpoint file.')
     parser.add_argument('--hf_model_path', type=str, default='togethercomputer/RedPajama-INCITE-7B-Chat',
                         help='hugging face model name (used to load config).')
