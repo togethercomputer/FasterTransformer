@@ -238,7 +238,7 @@ if __name__ == "__main__":
                         help='worker name for together coordinator.')
     parser.add_argument('--ckpt_path', type=str, default='/workspace/FasterTransformer/build/model/ft-RedPajama-INCITE-Chat-7B-v0.1/1-gpu',
                         help='path to the checkpoint file.')
-    parser.add_argument('--hf_model_path', type=str, default='togethercomputer/RedPajama-INCITE-Chat-7B-v0.1',
+    parser.add_argument('--hf_model_path', type=str, default='togethercomputer/RedPajama-INCITE-7B-Chat',
                         help='hugging face model name (used to load config).')
     parser.add_argument('--lib_path', type=str, default='/workspace/FasterTransformer/build/lib/libth_transformer.so',
                         help='path to the pyt_fastertransformer dynamic lib file.')

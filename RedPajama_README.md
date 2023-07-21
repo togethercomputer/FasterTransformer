@@ -8,10 +8,10 @@ $ sudo docker build -t ft_redpajama --file ./docker/Dockerfile.Together-Redpajam
 
 ## Convert RedPajama model to FT format
 
-- Download the checkpoint of RedPajama model from Hugging Face (e.g., RedPajama-INCITE-Chat-7B-v0.1):
+- Download the checkpoint of RedPajama model from Hugging Face (e.g., RedPajama-INCITE-7B-Chat):
 
 ```shell
-$ git lfs clone https://huggingface.co/togethercomputer/RedPajama-INCITE-Chat-7B-v0.1
+$ git lfs clone https://huggingface.co/togethercomputer/RedPajama-INCITE-7B-Chat
 ```
 
 - Start the ft_redpajama container:
@@ -23,7 +23,7 @@ $ sudo nvidia-docker run  --ipc=host --network=host --name test_ft_redpajama -ti
 - Run the converting script inside the container:
 
 ```shell
-$ python /workspace/FasterTransformer/examples/pytorch/gptneox/utils/huggingface_gptneox_convert.py -i /workspace/FasterTransformer/build/model/RedPajama-INCITE-Chat-7B-v0.1 -o /workspace/FasterTransformer/build/model/ft-RedPajama-INCITE-Chat-7B-v0.1 -i_g 1 -m_n RedPajama-INCITE-Chat-7B-v0.1 -weight_data_type fp16
+$ python /workspace/FasterTransformer/examples/pytorch/gptneox/utils/huggingface_gptneox_convert.py -i /workspace/FasterTransformer/build/model/RedPajama-INCITE-7B-Chat -o /workspace/FasterTransformer/build/model/ft-RedPajama-INCITE-7B-Chat -i_g 1 -m_n RedPajama-INCITE-7B-Chat -weight_data_type fp16
 ```
 
 ## To deploy the model
