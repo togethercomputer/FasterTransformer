@@ -99,7 +99,7 @@ class GptNeoXWeights(object):
         self.w.append(torch.zeros(vocab_size, global_hidden_units, dtype=self.inference_data_type))                             # post_decoder_embedding.kernel
 
         # Initialization
-        self._map(lambda w: torch.nn.init.normal_(w, mean=0., std=0.01))
+        # self._map(lambda w: torch.nn.init.normal_(w, mean=0., std=0.01))
 
     def __getitem__(self, idx):
         return self.w[idx]
@@ -271,7 +271,9 @@ class GptNeoX(nn.Module):
                 repetition_penalty: torch.Tensor = None,
                 random_seed: torch.Tensor = None,
                 return_output_length = False,
-                return_cum_log_probs=0):
+                return_cum_log_probs=0,
+                request_id=None,
+                stream_tokens_pipe=None):
         if not self.build_model:
             self.cuda()
         input_len = start_ids.size(1)
@@ -292,7 +294,9 @@ class GptNeoX(nn.Module):
                                      len_penalty, # optional, can be None
                                      repetition_penalty, # optional, can be None
                                      random_seed, # optional, can be None
-                                     return_cum_log_probs) # optional, can be None
+                                     return_cum_log_probs, # optional, can be None
+                                     request_id,  # optional, can be None
+                                     stream_tokens_pipe)  # optional, can be None
 
         if return_cum_log_probs == 0:
             output_ids, output_lengths = outputs
